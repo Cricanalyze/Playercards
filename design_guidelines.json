@@ -1,0 +1,240 @@
+{
+  "project_name": "RIVALCARD - All-Sports Collectible Player Card Platform",
+  "tagline": "Your Game. Your Identity. Your Card.",
+  "design_archetype": "THE PERFORMANCE PRO / ELECTRIC SPORTS COLLECTIBLE",
+  "theme": {
+    "default_mode": "dark",
+    "toggle_enabled": true,
+    "dark": {
+      "background_primary": "#0B0F17",
+      "background_secondary": "#121824",
+      "background_elevated": "#1A2234",
+      "surface_border": "rgba(255, 255, 255, 0.08)",
+      "text_primary": "#F8FAFC",
+      "text_secondary": "#94A3B8",
+      "text_muted": "#64748B"
+    },
+    "light": {
+      "background_primary": "#F8FAFC",
+      "background_secondary": "#EDF2F7",
+      "background_elevated": "#FFFFFF",
+      "surface_border": "rgba(15, 23, 42, 0.08)",
+      "text_primary": "#0F172A",
+      "text_secondary": "#475569",
+      "text_muted": "#94A3B8"
+    },
+    "accents": {
+      "gold_metallic": "#D4AF37",
+      "gold_bright": "#FFD700",
+      "electric_blue": "#0066FF",
+      "cyan_neon": "#00F0FF",
+      "purple_holographic": "#8A2BE2",
+      "magenta_neon": "#FF007F",
+      "emerald_green": "#10B981"
+    }
+  },
+  "typography": {
+    "font_families": {
+      "heading": "'Barlow Condensed', 'Outfit', sans-serif",
+      "body": "'DM Sans', 'Inter', sans-serif",
+      "mono": "'JetBrains Mono', monospace"
+    },
+    "font_sources": [
+      "https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;0,900;1,700&family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap"
+    ],
+    "hierarchy": {
+      "h1_hero": "text-4xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tight leading-none",
+      "h2_section": "text-2xl sm:text-3xl lg:text-4xl font-extrabold uppercase tracking-tight",
+      "h3_card_title": "text-xl sm:text-2xl font-bold uppercase tracking-tight",
+      "card_stat_value": "text-lg sm:text-xl font-black tracking-tighter font-mono",
+      "body": "text-base leading-relaxed",
+      "overline": "text-xs font-bold uppercase tracking-[0.2em] text-amber-400"
+    }
+  },
+  "layout_and_spacing": {
+    "philosophy": "Mobile-first, generous spacing with tactile bento-grid modules for card creation and data dashboarding",
+    "container_padding": "px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto",
+    "card_aspect_ratios": {
+      "collectible_card_standard": "aspect-[3/4] (Width: 360px, Height: 480px render canvas)",
+      "story_card_share": "aspect-[9/16] (Width: 1080px, Height: 1920px canvas target)"
+    }
+  },
+  "card_templates_visual_specs": [
+    {
+      "id": "classic_athlete",
+      "name": "Classic Athlete",
+      "category": "Traditional Sports",
+      "badge_text": "CLASSIC",
+      "description": "Timeless varsity aesthetic featuring diagonal header sashes, vintage stadium textures, and dual-color stat bars.",
+      "css_specs": {
+        "border": "3px solid #E2E8F0",
+        "background": "linear-gradient(135deg, #0F172A 0%, #1E293B 60%, #334155 100%)",
+        "header_overlay": "linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%) with 15deg skew",
+        "stat_box_bg": "rgba(255, 255, 255, 0.07)",
+        "stat_accent": "#3B82F6",
+        "ovr_badge": "bg-blue-600 text-white font-black rounded-md px-2 py-1 shadow-md"
+      }
+    },
+    {
+      "id": "black_gold_elite",
+      "name": "Black and Gold Elite",
+      "category": "Luxury Premium",
+      "badge_text": "ELITE",
+      "description": "Obsidian matte background with 24K metallic gold foil borders, engraved pattern corner bevels, and golden badge embellishments.",
+      "css_specs": {
+        "border": "2px solid #D4AF37",
+        "box_shadow": "0 0 25px rgba(212, 175, 55, 0.25), inset 0 0 15px rgba(212, 175, 55, 0.15)",
+        "background": "radial-gradient(circle at 50% 30%, #1A1A1A 0%, #0A0A0A 80%)",
+        "accent_gradient": "linear-gradient(90deg, #BF953F, #FCF6BA, #B38728, #FBF5B7)",
+        "stat_box_bg": "rgba(212, 175, 55, 0.08)",
+        "stat_accent": "#FFD700",
+        "ovr_badge": "border border-amber-400 bg-gradient-to-r from-amber-600 to-yellow-500 text-black font-black"
+      }
+    },
+    {
+      "id": "legendary_edition",
+      "name": "Legendary Edition",
+      "category": "Hall of Fame",
+      "badge_text": "LEGENDARY",
+      "description": "Burnished crimson & royal gold glow halo behind the player cutout, equipped with 5-star rating crest and holographic badge.",
+      "css_specs": {
+        "border": "3px solid #E11D48",
+        "box_shadow": "0 0 30px rgba(225, 29, 72, 0.3)",
+        "background": "radial-gradient(circle at center, #881337 0%, #4C0519 60%, #0F172A 100%)",
+        "halo_light": "radial-gradient(circle at 50% 40%, rgba(251, 191, 36, 0.35) 0%, transparent 60%)",
+        "stat_box_bg": "rgba(244, 63, 94, 0.12)",
+        "stat_accent": "#FBBF24",
+        "ovr_badge": "bg-rose-600 border-2 border-yellow-400 text-yellow-200 font-black rounded-full"
+      }
+    },
+    {
+      "id": "neon_energy",
+      "name": "Neon Energy",
+      "category": "High Impact",
+      "badge_text": "NEON",
+      "description": "Cyber-kinetic glowing neon cyan and hot magenta borders with angled geometry and high-contrast stat pillars.",
+      "css_specs": {
+        "border": "2px solid #00F0FF",
+        "box_shadow": "0 0 20px #00F0FF, 0 0 35px rgba(255, 0, 127, 0.4)",
+        "background": "linear-gradient(180deg, #050515 0%, #0D1127 100%)",
+        "grid_overlay": "repeating-linear-gradient(90deg, rgba(0, 240, 255, 0.05) 0px, rgba(0, 240, 255, 0.05) 1px, transparent 1px, transparent 20px)",
+        "stat_box_bg": "rgba(0, 240, 255, 0.1)",
+        "stat_accent": "#00F0FF",
+        "ovr_badge": "bg-cyan-500 text-black font-black shadow-[0_0_15px_#00F0FF]"
+      }
+    },
+    {
+      "id": "rookie_card",
+      "name": "Rookie Card",
+      "category": "Draft & Vintage",
+      "badge_text": "RC",
+      "description": "Authentic physical card stock feel with official RC shield mark, retro double line border, and draft year banner.",
+      "css_specs": {
+        "border": "4px double #CBD5E1",
+        "background": "linear-gradient(135deg, #1E293B 0%, #0F172A 100%)",
+        "rc_shield": "polygon banner top right with Gold RC emblem",
+        "stat_box_bg": "rgba(255, 255, 255, 0.05)",
+        "stat_accent": "#F59E0B",
+        "ovr_badge": "bg-amber-500 text-slate-950 font-black rounded px-2"
+      }
+    },
+    {
+      "id": "mvp_edition",
+      "name": "MVP Edition",
+      "category": "Championship",
+      "badge_text": "MVP",
+      "description": "Crown emblem watermark, metallic platinum frame, and illuminated golden spotlight accentuating player photo.",
+      "css_specs": {
+        "border": "3px solid #F59E0B",
+        "box_shadow": "0 0 25px rgba(245, 158, 11, 0.35)",
+        "background": "linear-gradient(160deg, #27272A 0%, #18181B 50%, #09090B 100%)",
+        "stat_box_bg": "rgba(245, 158, 11, 0.1)",
+        "stat_accent": "#FBBF24",
+        "ovr_badge": "bg-gradient-to-r from-yellow-400 to-amber-600 text-black font-black uppercase"
+      }
+    },
+    {
+      "id": "minimal_professional",
+      "name": "Minimal Professional",
+      "category": "Clean & Modern",
+      "badge_text": "PRO",
+      "description": "Architectural high-density layout, precise hairline grid lines, clear mono stats, and zero fluff.",
+      "css_specs": {
+        "border": "1px solid rgba(255, 255, 255, 0.15)",
+        "background": "#090D16",
+        "stat_box_bg": "rgba(255, 255, 255, 0.03)",
+        "stat_accent": "#94A3B8",
+        "ovr_badge": "bg-slate-800 text-slate-100 border border-slate-700 font-mono font-bold"
+      }
+    },
+    {
+      "id": "esports_pro",
+      "name": "Esports Pro",
+      "category": "Gaming & HUD",
+      "badge_text": "ESPORTS",
+      "description": "Hexagonal HUD mesh background, animated RGB perimeter glow, crosshair/controller stat indicators, and KDA rating bars.",
+      "css_specs": {
+        "border": "2px solid #A855F7",
+        "box_shadow": "0 0 25px rgba(168, 85, 247, 0.4)",
+        "background": "radial-gradient(circle at 50% 20%, #2E1065 0%, #0F172A 70%, #020617 100%)",
+        "stat_box_bg": "rgba(168, 85, 247, 0.12)",
+        "stat_accent": "#C084FC",
+        "ovr_badge": "bg-purple-600 text-white font-black tracking-widest border border-purple-400 shadow-[0_0_12px_#A855F7]"
+      }
+    }
+  ],
+  "sports_directory_config": [
+    {"id": "cricket", "name": "Cricket", "icon": "CricketBall", "stats": ["Batting Avg", "Strike Rate", "Wickets", "Economy", "High Score", "Catches"]},
+    {"id": "football", "name": "Football / Soccer", "icon": "Activity", "stats": ["Goals", "Assists", "Pass Acc %", "Pace", "Dribbling", "Tackles"]},
+    {"id": "basketball", "name": "Basketball", "icon": "Dribbble", "stats": ["PPG", "RPG", "APG", "3PT %", "Steals", "Blocks"]},
+    {"id": "esports_bgmi", "name": "Esports (BGMI / PUBG)", "icon": "Gamepad2", "stats": ["F/D Ratio", "Avg Damage", "Headshots", "Win Rate %", "Matches", "Top 10s"]},
+    {"id": "esports_valorant", "name": "Esports (Valorant)", "icon": "Crosshair", "stats": ["ACS", "K/D Ratio", "HS %", "ADR", "First Kills", "Clutch %"]},
+    {"id": "kabaddi", "name": "Kabaddi", "icon": "Zap", "stats": ["Raid Pts", "Tackle Pts", "Super Raids", "Super Tackles", "Not Out %", "High 5s"]},
+    {"id": "badminton", "name": "Badminton", "icon": "Trophy", "stats": ["Smash Speed", "Win Rate %", "Net Winners", "Rank", "Matches", "Tournaments"]},
+    {"id": "athletics", "name": "Athletics / Track", "icon": "Timer", "stats": ["Personal Best", "Season Best", "Medals", "Sprint Accel", "Endurance", "Rank"]},
+    {"id": "boxing", "name": "Boxing / MMA", "icon": "Shield", "stats": ["KOs", "Win-Loss", "Reach", "Strike Acc %", "Takedowns", "Stamina"]},
+    {"id": "chess", "name": "Chess", "icon": "Cpu", "stats": ["FIDE Rating", "Win %", "Rapid ELO", "Blitz ELO", "Puzzles", "Titles"]}
+  ],
+  "component_strategies": {
+    "header_nav": "Sticky navbar with dark glassmorphism (backdrop-blur-xl bg-slate-950/80 border-b border-white/10), quick brand logo with glowing gradient emblem, sports search drawer, theme toggle switch, 'Create Card' primary CTA button",
+    "card_editor": "Split layout on desktop (Left: Interactive Live Card Preview with 3D tilt effect on hover; Right: Tabbed editor for Sport, Template, Photo Upload & Adjustments, Player Details, Stats & Badges, Export options)",
+    "photo_crop_adjuster": "Interactive canvas or container with Zoom slider, X/Y offset controls, Rotation, Contrast/Brightness filters, and background color remover option",
+    "png_export_engine": "Uses html-to-image or html2canvas to render pixel-perfect high-resolution PNG outputs for 3:4 portrait collectible cards and 9:16 story format with instant download and Web Share API support",
+    "admin_dashboard": "Sidebar layout with stats overview cards (Total Cards, Revenue, Active Users, Top Sports), Data Table for User Management with role badges and action menus, Subscription Grant modal, Sports Config JSON editor, Templates Admin toggle grid, System Audit Log feed with timestamped actions"
+  },
+  "image_urls": {
+    "demo_players": [
+      {
+        "sport": "Basketball",
+        "name": "Marcus Vance",
+        "image_url": "https://images.pexels.com/photos/20615453/pexels-photo-20615453.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+      },
+      {
+        "sport": "Football",
+        "name": "Julian Alvarez",
+        "image_url": "https://images.unsplash.com/photo-1517466787929-bc90951d0974?crop=entropy&cs=srgb&fm=jpg&w=800&q=85"
+      },
+      {
+        "sport": "Esports Pro",
+        "name": "Alex 'Vortex' Chen",
+        "image_url": "https://images.unsplash.com/photo-1542751371-adc38448a05e?crop=entropy&cs=srgb&fm=jpg&w=800&q=85"
+      },
+      {
+        "sport": "Tennis",
+        "name": "Elena Rostova",
+        "image_url": "https://images.unsplash.com/photo-1595435742656-5272d0b3fa82?crop=entropy&cs=srgb&fm=jpg&w=800&q=85"
+      },
+      {
+        "sport": "Baseball",
+        "name": "Devon Brooks",
+        "image_url": "https://images.pexels.com/photos/7914952/pexels-photo-7914952.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+      }
+    ]
+  },
+  "general_ui_ux_guidelines": {
+    "data_testid_rule": "ALL interactive components, buttons, inputs, dropdowns, navigation links, card template selectors, export buttons, and admin rows MUST include clear data-testid attributes (e.g. data-testid='create-card-button', data-testid='template-select-black_gold_elite', data-testid='export-png-button').",
+    "hover_states": "Hover states MUST explicitly define text colors alongside background changes (e.g., hover:bg-amber-500 hover:text-black).",
+    "accessibility": "Maintain minimum 4.5:1 contrast ratio for body text, 3:1 for large display headers and buttons. Never rely on color alone for states.",
+    "animations": "Framer motion page transitions, smooth card tilt on hover (transform: rotateX / rotateY), subtle glowing pulse for live preview, reduced motion respect."
+  }
+}
