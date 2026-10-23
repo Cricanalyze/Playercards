@@ -20,7 +20,18 @@ export const blankData = (sport) => ({
   stats: {}, statKeys: (sport?.stats || []).slice(0, 6).map((s) => s.key), show: defaultShow(sport?.kind || "team"),
 });
 
-export const blankPhoto = { src: "", zoom: 1, x: 0, y: 0 };
+export const blankPhoto = { src: "", zoom: 1, x: 0, y: 0, cutout: "", useCutout: false, bg: { type: "none", value: "" } };
+
+export const BG_PRESETS = [
+  { type: "gradient", value: "linear-gradient(160deg,#0F172A,#1E3A8A)", label: "Night blue" },
+  { type: "gradient", value: "linear-gradient(160deg,#111,#B38728)", label: "Black gold" },
+  { type: "gradient", value: "linear-gradient(160deg,#4C0519,#E11D48)", label: "Crimson" },
+  { type: "gradient", value: "linear-gradient(160deg,#050515,#00F0FF)", label: "Neon cyan" },
+  { type: "gradient", value: "linear-gradient(160deg,#2E1065,#C084FC)", label: "Purple haze" },
+  { type: "gradient", value: "radial-gradient(circle at 50% 35%,#FDE68A,#F59E0B 45%,#78350F)", label: "Spotlight" },
+  { type: "gradient", value: "repeating-linear-gradient(135deg,#0B0F17 0 14px,#1A2234 14px 28px)", label: "Stripes" },
+  { type: "gradient", value: "linear-gradient(180deg,#065F46,#10B981)", label: "Pitch green" },
+];
 
 export const DEMO_PLAYERS = [
   { sport: "basketball", template: "black_gold_elite", photo: "https://images.pexels.com/photos/20615453/pexels-photo-20615453.jpeg?auto=compress&cs=tinysrgb&w=800",

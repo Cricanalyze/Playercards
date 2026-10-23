@@ -1,5 +1,5 @@
-import { useRef } from "react";
-import { Lock, Upload, Trash2, RefreshCw, ZoomIn, Check } from "lucide-react";
+import { useRef, useState } from "react";
+import { Lock, Upload, Trash2, RefreshCw, ZoomIn, Check, Wand2, Loader2, ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,7 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { SportsGrid } from "@/components/SportsGrid";
 import { ScaledCard } from "@/components/card/PlayerCard";
-import { ACCENTS, MAX_MB, processPhoto } from "@/lib/cardUtils";
+import { ACCENTS, MAX_MB, processPhoto, blankPhoto, BG_PRESETS } from "@/lib/cardUtils";
+import { removeBackground } from "@/lib/bgRemoval";
 
 export const canUse = (t, ent) => t.tier === "free" || ent?.all_premium_templates || ent?.premium_templates?.includes(t.id);
 
@@ -47,7 +48,7 @@ export const PhotoPanel = ({ photo, setPhoto }) => {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    try { setPhoto({ src: await processPhoto(f), zoom: 1, x: 0, y: 0 }); toast.success("Photo added. Drag the card preview to reposition."); }
+    try { setPhoto({ ...blankPhoto, src: await processPhoto(f) }); toast.success("Photo added. Drag the card preview to reposition."); }
     catch (err) { toast.error(err.message); }
   };
   const set = (k) => (v) => setPhoto({ ...photo, [k]: v[0] }, false);
@@ -57,7 +58,7 @@ export const PhotoPanel = ({ photo, setPhoto }) => {
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => input.current.click()} className="rounded-full font-bold hover:bg-amber-400 hover:text-slate-950" data-testid="photo-upload-button">
           {photo.src ? <><RefreshCw className="w-4 h-4 mr-1" /> Replace photo</> : <><Upload className="w-4 h-4 mr-1" /> Upload photo</>}</Button>
-        {photo.src && <Button variant="outline" className="rounded-full" onClick={() => setPhoto({ src: "", zoom: 1, x: 0, y: 0 })} data-testid="photo-remove-button"><Trash2 className="w-4 h-4 mr-1" /> Remove</Button>}
+        {photo.src && <Button variant="outline" className="rounded-full" onClick={() => setPhoto(blankPhoto)} data-testid="photo-remove-button"><Trash2 className="w-4 h-4 mr-1" /> Remove</Button>}
         {photo.src && <Button variant="ghost" className="rounded-full" onClick={() => setPhoto({ ...photo, zoom: 1, x: 0, y: 0 })} data-testid="photo-reset-position-button">Reset position</Button>}
       </div>
       <p className="text-xs text-muted-foreground">JPG, PNG or WebP up to {MAX_MB} MB. Your photo is processed on this device only and is never uploaded. Only use photos you have permission to use.</p>
@@ -70,6 +71,56 @@ export const PhotoPanel = ({ photo, setPhoto }) => {
             </div>
           ))}
           <p className="text-xs text-muted-foreground">Tip: drag directly on the card preview to move the photo.</p>
+        </div>
+      )}
+      {photo.src && <BackgroundSection photo={photo} setPhoto={setPhoto} />}
+    </div>
+  );
+};
+
+const BackgroundSection = ({ photo, setPhoto }) => {
+  const [busy, setBusy] = useState(false);
+  const bgInput = useRef(null);
+  const run = async () => {
+    setBusy(true);
+    try { setPhoto({ ...photo, cutout: await removeBackground(photo.src), useCutout: true }); toast.success("Background removed. Pick a new background below."); }
+    catch { toast.error("Background removal didn't work on this device. Try a clearer photo or another browser."); }
+    finally { setBusy(false); }
+  };
+  const setBg = (bg) => setPhoto({ ...photo, bg });
+  const onBgFile = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    try { setBg({ type: "image", value: await processPhoto(f) }); } catch (err) { toast.error(err.message); }
+  };
+  const isOn = (b) => photo.bg?.type === b.type && photo.bg?.value === b.value;
+  const sw = "w-10 h-10 rounded-lg border-2 transition-transform hover:scale-110";
+  return (
+    <div className="space-y-4 border-t border-border pt-5" data-testid="background-section">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-semibold text-sm flex items-center gap-2"><Wand2 className="w-4 h-4 text-amber-500" />Background</p>
+          <p className="text-xs text-muted-foreground">Removal runs on your device — the photo is never uploaded. First use downloads a ~16 MB free AI model once.</p>
+        </div>
+        {photo.cutout
+          ? <label className="flex items-center gap-2 text-sm shrink-0">Cutout<Switch data-testid="bg-cutout-switch" checked={photo.useCutout} onCheckedChange={(v) => setPhoto({ ...photo, useCutout: v })} /></label>
+          : <Button onClick={run} disabled={busy} variant="outline" className="rounded-full shrink-0" data-testid="bg-remove-button">{busy ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Removing…</> : "Remove background"}</Button>}
+      </div>
+      {photo.cutout && photo.useCutout && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <button data-testid="bg-option-none" onClick={() => setBg({ type: "none", value: "" })} className={`${sw} text-[9px] font-bold uppercase ${photo.bg?.type === "none" ? "border-amber-500" : "border-border"}`}>Card</button>
+            {BG_PRESETS.map((b, i) => <button key={b.label} data-testid={`bg-preset-${i}`} aria-label={b.label} title={b.label} onClick={() => setBg(b)} className={`${sw} ${isOn(b) ? "border-amber-500" : "border-transparent"}`} style={{ background: b.value }} />)}
+            {ACCENTS.slice(0, 5).map((c) => <button key={c} data-testid={`bg-color-${c.slice(1)}`} aria-label={`Solid ${c}`} onClick={() => setBg({ type: "color", value: c })} className={`${sw} ${isOn({ type: "color", value: c }) ? "border-amber-500" : "border-transparent"}`} style={{ background: c }} />)}
+            <input type="color" data-testid="bg-custom-color-input" aria-label="Custom background colour" value={photo.bg?.type === "color" ? photo.bg.value : "#1A2234"} onChange={(e) => setBg({ type: "color", value: e.target.value })} className="w-10 h-10 rounded-lg bg-transparent cursor-pointer" />
+          </div>
+          <input ref={bgInput} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={onBgFile} data-testid="bg-image-file-input" />
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" className="rounded-full" onClick={() => bgInput.current.click()} data-testid="bg-upload-image-button"><ImageIcon className="w-4 h-4 mr-1" />Upload background image</Button>
+            <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setPhoto({ ...photo, cutout: "", useCutout: false, bg: { type: "none", value: "" } })} data-testid="bg-restore-original-button">Restore original</Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Only use background images you have rights to (no official logos or stadium photos you don't own).</p>
         </div>
       )}
     </div>

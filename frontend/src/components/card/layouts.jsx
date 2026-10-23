@@ -5,10 +5,19 @@ const H = "'Barlow Condensed', 'DM Sans', sans-serif";
 const M = "'JetBrains Mono', ui-monospace, monospace";
 const abs = (s) => ({ position: "absolute", ...s });
 
-export const Photo = ({ photo, style, tint = "#94A3B8" }) => (
+const PhotoBg = ({ bg }) => {
+  if (!bg || bg.type === "none" || !bg.value) return null;
+  if (bg.type === "image") return <img src={bg.value} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />;
+  return <div style={{ position: "absolute", inset: 0, background: bg.value }} />;
+};
+
+export const Photo = ({ photo, style, tint = "#94A3B8" }) => {
+  const cut = photo?.useCutout && photo?.cutout;
+  return (
   <div style={abs({ overflow: "hidden", ...style })}>
+    {cut && <PhotoBg bg={photo.bg} />}
     {photo?.src ? (
-      <img src={photo.src} alt="" draggable={false} crossOrigin="anonymous"
+      <img src={cut ? photo.cutout : photo.src} alt="" draggable={false} crossOrigin="anonymous"
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transformOrigin: "center",
           transform: `translate(${photo.x}%, ${photo.y}%) scale(${photo.zoom})`, userSelect: "none", pointerEvents: "none" }} />
     ) : (
@@ -17,7 +26,8 @@ export const Photo = ({ photo, style, tint = "#94A3B8" }) => (
       </div>
     )}
   </div>
-);
+  );
+};
 
 export const statsOf = (sport, d) =>
   (sport?.stats || []).filter((s) => d.statKeys?.includes(s.key)).slice(0, 6)
