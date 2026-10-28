@@ -148,6 +148,9 @@ async def audit(actor: dict, action: str, target: str = "", details: Optional[di
 async def expire_sweep():
     t = iso()
     await db.subscriptions.update_many(
+        {"status": "pending", "source": {"$ne": "payment"}, "start_at": {"$lte": t}},
+        {"$set": {"status": "active"}, "$push": {"history": {"at": t, "event": "started", "by": "system"}}})
+    await db.subscriptions.update_many(
         {"status": {"$in": ACTIVE_STATES}, "end_at": {"$ne": None, "$lt": t}},
         {"$set": {"status": "expired"}, "$push": {"history": {"at": t, "event": "expired", "by": "system"}}})
 
@@ -169,7 +172,7 @@ async def get_entitlements(member: Optional[dict]) -> dict:
     if member:
         for s in await active_subs(member["user_id"]):
             p = plans.get(s["plan_id"])
-            if p and p.get("active", True) and p["order"] >= plan["order"]:
+            if p and p["order"] >= plan["order"]:
                 plan, sub = p, s
     period, reset_at = period_of()
     used = (await db.usage.find_one({"user_id": member["user_id"], "period": period}, NOFIELDS) or {}) if member else {}
@@ -481,6 +484,8 @@ async def verify_payment(body: VerifyIn, member: dict = Depends(current_member))
     p = rzp("GET", f"/payments/{body.razorpay_payment_id}")
     if p.get("order_id") != pay["order_id"] or int(p.get("amount", 0)) != int(round(pay["amount_inr"] * 100)):
         raise HTTPException(400, "Payment details do not match this order.")
+    if p.get("status") == "authorized":
+        p = rzp("POST", f"/payments/{p['id']}/capture", json={"amount": p["amount"], "currency": "INR"})
     if p.get("status") == "captured":
         await activate_payment(pay, p["id"], "checkout")
     elif p.get("status") == "authorized":
@@ -932,9 +937,10 @@ async def admin_grant(body: GrantIn, member: dict = Depends(require_perm("subscr
                                     start + (relativedelta(years=1) if body.cycle == "year" else relativedelta(months=1)))
     if end <= start:
         raise HTTPException(400, "Expiry must be after the start date.")
-    await db.subscriptions.update_many({"user_id": body.user_id, "status": {"$in": ACTIVE_STATES}, "source": {"$ne": "payment"}},
-                                       {"$set": {"status": "canceled", "end_at": iso()},
-                                        "$push": {"history": {"at": iso(), "event": "replaced_by_admin_assignment", "by": member["user_id"]}}})
+    if start <= now():
+        await db.subscriptions.update_many({"user_id": body.user_id, "status": {"$in": ACTIVE_STATES}, "source": {"$ne": "payment"}},
+                                           {"$set": {"status": "canceled", "end_at": iso()},
+                                            "$push": {"history": {"at": iso(), "event": "replaced_by_admin_assignment", "by": member["user_id"]}}})
     sub = {"id": new_id(), "user_id": body.user_id, "plan_id": plan["id"], "template_id": None,
            "plan_snapshot": {"name": plan["name"], "type": plan["type"], "price_inr": 0, "interval": body.cycle,
                              "cards_per_month": plan["cards_per_month"], "entitlements": plan["entitlements"]},
@@ -1008,11 +1014,12 @@ async def admin_extend(sub_id: str, body: SubAction, member: dict = Depends(requ
     s = await _sub(sub_id)
     if not body.days:
         raise HTTPException(400, "Days required")
-    if s["status"] in ("refunded",):
-        raise HTTPException(409, "Refunded subscriptions cannot be extended.")
+    if s["status"] in ("refunded", "canceled"):
+        raise HTTPException(409, f"{s['status'].title()} subscriptions cannot be extended. Assign a new plan instead.")
     base = max(now(), datetime.fromisoformat(s["end_at"])) if s.get("end_at") else now()
     end = iso(base + timedelta(days=body.days))
-    await db.subscriptions.update_one({"id": sub_id}, {"$set": {"end_at": end, "status": "active"},
+    status = "pending" if s["status"] == "pending" else "active"
+    await db.subscriptions.update_one({"id": sub_id}, {"$set": {"end_at": end, "status": status},
                                                        "$push": {"history": {"at": iso(), "event": "extended", "by": member["user_id"], "days": body.days, "note": body.note}}})
     await audit(member, "subscription.extended", s["user_id"], {"subscription": sub_id, "days": body.days, "end_at": end})
     return {"ok": True, "end_at": end}

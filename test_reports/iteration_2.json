@@ -1,0 +1,45 @@
+{
+  "summary": "Tested the subscription model end to end on the backend and frontend. Backend: wrote a new pytest suite, tests/test_subscriptions_v2.py, with 39 tests and all 39 pass. It covers the exact plan prices and limits, the 25 templates and their collections, export credits (401 when signed out, request_id validation, duplicate request_id not charged, 402 with upgrade:true after the limit), template locks for every plan, features_used gating, bg-removal authorization and counting, background locking, /me entitlements, Team-only brand, Razorpay checkout (pro yearly = 45000 paise, basic monthly = 1800), verify with a bad signature (400, plan not activated) and the webhook returning 503. Admin coverage: plan update, persistence and restore, POST /admin/plans returning 405, template access per plan, template create/publish/delete with a frame overlay and rejection of JPEG frames, subscription grant, date change, extend and cancel, report, metrics, payments, user detail, suspend/reactivate, audit entries, and 403 for non-admins. Frontend (Playwright with real Clerk sign-in for free, basic, pro, team and admin): editor credits pill, photo sliders and rotate-90, effects/bg-remove/bg-upload locking per plan with toasts, NEEDS X badges (19 locked for Free, 14 for Basic, 4 for Pro, 0 for Team), the signed-out dialog with the sign-in button, the upgrade dialog after credits run out, a Pro export using one credit with a bg-removal authorization call (200), Pricing month/year prices, the Razorpay checkout iframe opening, the dashboard plan/credits/reset/expiry and saved cards, Team branding save and share on mobile, and the admin Plans edit dialog, Templates new/publish/delete with frame upload, Subscriptions report and payments table, and the user Manage grant form. One real backend bug found: admin grants with a future start date stay 'pending' forever and never activate.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/admin/subscriptions (future start_at) + expire_sweep/active_subs", "issue": "A grant whose start_at is in the future gets status 'pending', and no code ever moves it to 'active'. expire_sweep only expires subscriptions and ACTIVE_STATES = active/trialing/past_due, so the user never receives the plan. Reproduced: granted Pro with start=now+5s, waited 10s, /me still showed plan free and the sub was still pending. The same grant also cancels the user's current non-payment access straight away, so the user loses their plan until the future start date, and then gets nothing.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/admin/subscriptions/{id}/extend", "issue": "Extend always sets status 'active', even for a pending sub with a future start or a canceled sub. A pending grant becomes active early, and extending a revoked sub silently reactivates it."},
+      {"endpoint": "get_entitlements", "issue": "When an admin disables a plan (active=false), every current subscriber, including paying ones, drops straight to Free because of the p.get('active') check. Disabling should probably only hide the plan from new purchases."},
+      {"endpoint": "POST /api/billing/verify", "issue": "If Razorpay returns 'authorized' (auto-capture off), the payment stays authorized and the plan only activates through the webhook. The webhook secret is not configured yet, so such a payment never activates. Either call capture or make sure auto-capture is enabled on the Razorpay account."},
+      {"endpoint": "activate_payment", "issue": "Buying a different paid plan cancels the existing payment subscription immediately, with no proration or credit for the remaining time (for example a yearly Pro user buying Basic loses the Pro year)."},
+      {"endpoint": "POST /api/tools/bg-removal", "issue": "The credit is taken before the in-browser MediaPipe step runs. If the model download or inference fails, the credit is lost unless the frontend retries with the same request_id."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin user Manage dialog / subscription Dates", "issues": ["grant-start-input, grant-end-input and sub-start/end inputs use the browser's native <input type=date> picker instead of the shadcn Calendar/Popover, which looks different from the rest of the dark UI"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_subscriptions_v2.py", "/app/backend/tests/probe_pending.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix pending subscriptions: in expire_sweep (or active_subs), set status 'active' for subs with status 'pending' and start_at <= now. Also don't cancel the user's current non-payment access when the new grant starts in the future (cancel it at the new start date instead, or keep both).",
+    "admin_extend: keep the status 'pending' while start_at is in the future. Decide whether extending a canceled sub should be allowed.",
+    "Decide what disabling a plan means. Probably hide it from /plans and checkout while existing subscribers keep their entitlements.",
+    "Handle 'authorized' payments in /billing/verify (capture through the API) or document that auto-capture must be on, and configure RAZORPAY_WEBHOOK_SECRET.",
+    "Optional: replace native date inputs in the admin grant/dates forms with the shadcn Calendar."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1315 lines; split it into routers (billing, admin_subscriptions, admin_catalog, me).",
+    "features_used is reported by the client, so a modified client can leave out advanced_effects/custom_backgrounds to avoid the 402. This is acceptable because effects are rendered in the browser, but treat it as advisory and don't rely on it for billing.",
+    "Templates with plans=[] are treated as available to every plan, including Free (can_use_template). The admin form lets an admin untick all plans, which silently makes a template free for everyone. Consider requiring at least one plan.",
+    "Rate limiting is in memory and per process, so it resets on restart and isn't shared between workers. The export limit of 40/min per IP can also affect users behind a shared NAT.",
+    "QA test suite note: test_admin_suspend_reactivate revokes Clerk sessions for qa.basic, so regenerate tokens afterwards."
+  ],
+  "updated_files": ["/app/backend/tests/test_subscriptions_v2.py (new)", "/app/backend/tests/probe_pending.py (new)", "Moved obsolete /app/backend/tests/test_rivalcard_api.py and test_rivalcard_extra.py to /app/backend/tests/_obsolete/"],
+  "success_rate": {"backend": "97% (39/39 pytest pass; 1 bug found by an extra probe: pending grants never activate)", "frontend": "100% of the requested flows work"},
+  "test_credentials": "From /app/memory/test_credentials.md: QA accounts qa.{admin,free,basic,pro,team}+clerk_test@example.com / Rival-QA-2026! (Clerk sign-in may ask for an email code: 424242). Tokens: python3 qa_users.py tokens",
+  "seed_data_creation": "No permanent seed data. Plan values were restored (18/180/5, 45/450/15, etc.). The test templates were deleted (25 remain). Test grants on qa.free were canceled, so qa.free is back on Free. The test saved card was deleted. Usage and usage_events were reset. Left in place: a few Razorpay 'created' payment records (order only, unpaid) for qa.free/qa.basic, canceled subscription history rows on qa.free, and team brand {team:'TEST_FC'} on qa.team.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python3 -m pytest tests/test_subscriptions_v2.py -v (resets usage before and after; suspend/reactivate revokes qa.basic sessions, so regenerate /tmp/tokens.json). Retest the pending fix with tests/probe_pending.py: the plan should become 'pro' after the start passes. The server clock is Oct 2026, so credits reset on Nov 1, 2026. In the browser, Clerk sign-in uses input[name=identifier] -> Continue -> input[name=password] -> Continue -> OTP 424242. Photo sliders only render after uploading a photo via photo-file-input.",
+  "rca of the issue": "Pending grants: admin_grant sets status='pending' when start > now (server.py line 941). The only status sweep is expire_sweep (line 148), which only changes active->expired. ACTIVE_STATES excludes 'pending', so active_subs never returns the sub. Repro: POST /api/admin/subscriptions with start_at a few seconds in the future, wait, then GET /api/me: plan_id stays 'free'. Fix: in expire_sweep add update_many({status:'pending', start_at:{$lte:t}}, {$set:{status:'active'}, $push:history}). Also, admin_grant's update_many cancels existing non-payment subs immediately; only do that when the new sub starts now."
+}

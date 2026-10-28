@@ -64,18 +64,20 @@ const BackgroundSection = ({ photo, setPhoto, ent }) => {
   const { refreshMe, isSignedIn } = useAppData();
   const library = useBackgrounds(ent?.plan_id);
   const [busy, setBusy] = useState(false);
+  const pendingId = useRef("");
   const bgInput = useRef(null);
   const f = ent?.features || {};
   const run = async () => {
     if (!isSignedIn) return upgradeToast("Sign in and choose Basic or higher to remove backgrounds.");
     if (!f.bg_removal) return upgradeToast("Background removal is included in Basic, Pro and Team.");
     setBusy(true);
+    pendingId.current = pendingId.current || newRequestId();
     try {
-      await api("post", "/tools/bg-removal", { request_id: newRequestId() });
+      await api("post", "/tools/bg-removal", { request_id: pendingId.current });
       refreshMe();
     } catch (e) { setBusy(false); return e?.response?.status === 402 ? upgradeToast(errMsg(e)) : toast.error(errMsg(e)); }
-    try { setPhoto({ ...photo, cutout: await removeBackground(photo.src), useCutout: true }); toast.success("Background removed. Pick a new background below."); }
-    catch { toast.error("Background removal didn't work on this device. Try a clearer photo or another browser."); }
+    try { setPhoto({ ...photo, cutout: await removeBackground(photo.src), useCutout: true }); pendingId.current = ""; toast.success("Background removed. Pick a new background below."); }
+    catch { toast.error("Background removal didn't work on this device. Retrying won't use another credit."); }
     finally { setBusy(false); }
   };
   const setBg = (bg) => setPhoto({ ...photo, bg });

@@ -20,8 +20,12 @@ const Cta = ({ p, cycle, cfg, current }) => {
   if (!isSignedIn) return <Button asChild className={cls} data-testid={`plan-cta-${p.id}`}><Link to="/sign-in">Sign in to choose {p.name}</Link></Button>;
   if (!cfg?.enabled) return <Button disabled variant="outline" className="mt-4 rounded-full" data-testid={`plan-cta-${p.id}`}>Payments pending setup</Button>;
   const label = current === p.id ? `Renew ${p.name}` : current && current !== "free" ? `Switch to ${p.name}` : `Get ${p.name}`;
+  const go = () => {
+    if (current && current !== "free" && current !== p.id && !window.confirm(`Switching to ${p.name} ends your current plan immediately (no refund for unused time). Continue?`)) return;
+    pay(p, cycle);
+  };
   return (
-    <Button onClick={() => pay(p, cycle)} disabled={!!busy} className={cls} data-testid={`plan-cta-${p.id}`}>
+    <Button onClick={go} disabled={!!busy} className={cls} data-testid={`plan-cta-${p.id}`}>
       {busy === `${p.id}-${cycle}` && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}{label} · {inr(cycle === "year" ? p.price_year : p.price_month)}
     </Button>
   );

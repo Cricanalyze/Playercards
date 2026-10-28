@@ -52,7 +52,7 @@ function Grant({ userId, onDone }) {
         <SelectTrigger data-testid="grant-cycle-select"><SelectValue /></SelectTrigger>
         <SelectContent><SelectItem value="month">1 month</SelectItem><SelectItem value="year">12 months</SelectItem></SelectContent>
       </Select>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 [&_input]:[color-scheme:dark]">
         <Input type="date" value={g.start_at} onChange={(e) => setG({ ...g, start_at: e.target.value })} data-testid="grant-start-input" aria-label="Start date" />
         <Input type="date" value={g.end_at} onChange={(e) => setG({ ...g, end_at: e.target.value })} data-testid="grant-end-input" aria-label="Expiry date (optional)" />
       </div>

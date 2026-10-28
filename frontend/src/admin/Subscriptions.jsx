@@ -18,7 +18,7 @@ export function SubActions({ sub, onDone }) {
   const active = ["active", "trialing", "past_due"].includes(sub.status);
   const act = async (fn, ok) => { try { await fn(); toast.success(ok); setDates(null); onDone(); } catch (e) { toast.error(errMsg(e)); } };
   return (
-    <div className="flex flex-wrap items-center gap-1 ml-auto">
+    <div className="flex flex-wrap items-center gap-1 ml-auto [&_input[type=date]]:[color-scheme:dark]">
       <Input value={days} onChange={(e) => setDays(e.target.value)} className="w-16 h-8" type="number" min={1} data-testid={`sub-extend-days-${sub.id}`} />
       <Button size="sm" variant="outline" className="h-8" onClick={() => act(() => api("post", `/admin/subscriptions/${sub.id}/extend`, { days: Number(days) }), "Extended")} data-testid={`sub-extend-${sub.id}`}>Extend</Button>
       {!dates && <Button size="sm" variant="ghost" className="h-8" onClick={() => setDates({ start_at: day(sub.start_at), end_at: day(sub.end_at) })} data-testid={`sub-dates-${sub.id}`}>Dates</Button>}
