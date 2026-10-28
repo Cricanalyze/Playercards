@@ -1,0 +1,2 @@
+.card-tilt { transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s; }
+.card-tilt:hover { transform: perspective(900px) rotateX(4deg) rotateY(-6deg) translateY(-4px); }
