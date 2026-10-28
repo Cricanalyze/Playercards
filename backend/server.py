@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -1680,7 +1681,7 @@ def _email_view() -> dict:
 @admin.get("/settings")
 async def admin_settings(member: dict = Depends(require_perm("settings.manage"))):
     logs = await db.email_log.find({}, NOFIELDS).sort("created_at", -1).limit(15).to_list(15)
-    return {"razorpay": _rzp_view(), "email": _email_view(), "email_log": logs, "clerk": _clerk_view(),
+    return {"razorpay": _rzp_view(), "email": _email_view(), "email_log": logs, "clerk": _clerk_view(), "site": settings_store.get("site"), "site_status": site_status(),
             "social": settings_store.get("social"), "templates": [{"id": k, "label": v[0]} for k, v in ET.SAMPLES.items()]}
 
 
@@ -1851,6 +1852,93 @@ async def clerk_webhook(request: Request):
         raise HTTPException(500, "Email delivery failed")
     await db.webhook_events.insert_one({"event_id": f"clerk:{sid}", "type": "clerk.email.created", "slug": slug, "received_at": iso()})
     return {"ok": True}
+
+
+def _dt(v: str):
+    try:
+        return datetime.fromisoformat(v.replace("Z", "+00:00")) if v else None
+    except ValueError:
+        return None
+
+
+def site_status() -> dict:
+    c, n = settings_store.get("site"), now()
+    launch = _dt(c["cs_launch_at"])
+    start = _dt(c["mt_start_at"])
+    end = start + timedelta(minutes=int(c["mt_duration_min"])) if start else None
+    state = "live"
+    if c["cs_enabled"] and not (c["cs_auto_open"] and launch and n >= launch):
+        state = "coming_soon"
+    elif c["mt_enabled"] and start and n < end:
+        state = "maintenance" if n >= start else "maintenance_scheduled"
+    return {"state": state, "blocked": state in ("coming_soon", "maintenance"), "server_time": iso(),
+            "coming_soon": {"launch_at": iso(launch) if launch else None, "title": c["cs_title"], "message": c["cs_message"]},
+            "maintenance": {"start_at": iso(start) if start else None, "end_at": iso(end) if end else None,
+                            "duration_min": int(c["mt_duration_min"]), "message": c["mt_message"]}}
+
+
+@api.get("/site/status")
+async def get_site_status():
+    return site_status()
+
+
+class SiteIn(BaseModel):
+    cs_enabled: bool
+    cs_launch_at: str = Field(default="", max_length=40)
+    cs_title: str = Field(default="", max_length=80)
+    cs_message: str = Field(default="", max_length=300)
+    cs_auto_open: bool = True
+    mt_enabled: bool
+    mt_start_at: str = Field(default="", max_length=40)
+    mt_duration_min: int = Field(default=60, ge=5, le=10080)
+    mt_message: str = Field(default="", max_length=300)
+
+
+@admin.put("/settings/site")
+async def admin_set_site(body: SiteIn, member: dict = Depends(require_perm("settings.manage"))):
+    for f in ("cs_launch_at", "mt_start_at"):
+        if getattr(body, f) and not _dt(getattr(body, f)):
+            raise HTTPException(400, "Enter a valid date and time.")
+    if body.cs_enabled and body.cs_auto_open and not body.cs_launch_at:
+        raise HTTPException(400, "Set a launch date and time, or turn off automatic opening.")
+    if body.mt_enabled and not body.mt_start_at:
+        raise HTTPException(400, "Set when maintenance starts (or press Start now).")
+    vals = body.model_dump()
+    await settings_store.reset(db, "site")
+    await settings_store.save(db, "site", vals, member["user_id"], iso())
+    await audit(member, "settings.site_updated", "site", {"coming_soon": body.cs_enabled, "maintenance": body.mt_enabled,
+                                                           "launch_at": body.cs_launch_at, "mt_start_at": body.mt_start_at, "mt_minutes": body.mt_duration_min})
+    _STAFF_CACHE.clear()
+    return {"site": settings_store.get("site"), "status": site_status()}
+
+
+_STAFF_CACHE: dict = {}
+GATE_OPEN = ("/api/site/", "/api/clerk/", "/api/admin/", "/api/billing/webhook", "/api/billing/config")
+
+
+async def _is_staff_request(request: Request) -> bool:
+    try:
+        uid = require_user(request)["user_id"]
+    except HTTPException:
+        return False
+    hit = _STAFF_CACHE.get(uid)
+    if hit and hit[1] > time.time():
+        return hit[0]
+    u = await db.users.find_one({"user_id": uid}, {"_id": 0, "role": 1, "status": 1})
+    ok = bool(u and u.get("status") == "active" and effective_role(u.get("role")) != "user")
+    _STAFF_CACHE[uid] = (ok, time.time() + 30)
+    return ok
+
+
+@app.middleware("http")
+async def site_gate(request: Request, call_next):
+    p = request.url.path
+    if p.startswith("/api/") and p not in ("/api/", "/api/me") and request.method != "OPTIONS" and not p.startswith(GATE_OPEN):
+        st = site_status()
+        if st["blocked"] and not await _is_staff_request(request):
+            msg = "FlexoCards is launching soon." if st["state"] == "coming_soon" else "FlexoCards is under maintenance. Please try again soon."
+            return JSONResponse({"detail": msg, "site_state": st["state"]}, status_code=423)
+    return await call_next(request)
 
 
 app.include_router(api)

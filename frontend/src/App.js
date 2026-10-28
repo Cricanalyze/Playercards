@@ -34,6 +34,8 @@ import Write from "@/pages/Write";
 import PostEditor from "@/pages/PostEditor";
 import SharedCard from "@/pages/SharedCard";
 import ScreenGuard from "@/components/ScreenGuard";
+import SiteGate from "@/components/site/SiteGate";
+import { SiteStatusProvider } from "@/context/SiteStatus";
 
 const ScrollTop = () => {
   const { pathname, hash } = useLocation();
@@ -65,8 +67,10 @@ function App() {
       <BrowserRouter>
         <ClerkAuthProvider>
           <AppDataProvider>
+            <SiteStatusProvider>
             <ScrollTop />
             <ScreenGuard />
+            <SiteGate>
             <Routes>
               <Route element={<PublicShell />}>
                 <Route path="/" element={<Home />} />
@@ -89,7 +93,9 @@ function App() {
               <Route path="/admin/*" element={<AdminApp />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </SiteGate>
             <Toaster richColors position="top-center" />
+            </SiteStatusProvider>
           </AppDataProvider>
         </ClerkAuthProvider>
       </BrowserRouter>

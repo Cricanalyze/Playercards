@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useApi, errMsg, fmtDateTime } from "@/lib/api";
 import { PageHead } from "./AdminApp";
 import { ClerkEmails, TemplatesPreview, SocialSettings } from "./SettingsExtra";
+import { SiteModeSettings } from "./SiteMode";
 
 const F = ({ label, hint, children }) => (
   <div className="space-y-1.5 min-w-0"><Label>{label}</Label>{children}{hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}</div>
@@ -132,7 +133,8 @@ export default function Settings() {
   if (!d) return <p className="text-muted-foreground">Loading settings…</p>;
   return (
     <div className="space-y-6" data-testid="admin-settings">
-      <PageHead title="Settings" sub="Payments, email, sign-in emails and social links. Only Super Admins can see this page." />
+      <PageHead title="Settings" sub="Site status, payments, email, sign-in emails and social links. Only Super Admins can see this page." />
+      <SiteModeSettings key={`m${v}`} data={d.site} status={d.site_status} onSaved={(r) => setD({ ...d, site: r.site, site_status: r.status })} />
       <RazorpaySettings key={`r${v}`} data={d.razorpay} onSaved={(r) => setD({ ...d, razorpay: r })} onReset={() => reset("razorpay")} />
       <EmailSettings key={`e${v}`} data={d.email} onSaved={(r) => (r ? setD({ ...d, email: r }) : load())} onReset={() => reset("email")} />
       <ClerkEmails key={`c${v}`} data={d.clerk} onSaved={(r) => setD({ ...d, clerk: r })} onReset={() => reset("clerk")} />

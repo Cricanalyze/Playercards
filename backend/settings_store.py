@@ -17,6 +17,10 @@ def env_defaults(section: str) -> dict:
         return {"webhook_secret": e("CLERK_WEBHOOK_SECRET", "")}
     if section == "social":
         return {k: "" for k in SOCIAL_KEYS}
+    if section == "site":
+        return {"cs_enabled": False, "cs_launch_at": "", "cs_title": "Something big is coming", "cs_message": "FlexoCards is getting ready to launch. Stay tuned!",
+                "cs_auto_open": True, "mt_enabled": False, "mt_start_at": "", "mt_duration_min": 60,
+                "mt_message": "We're upgrading FlexoCards to make it even better. We'll be back shortly."}
     return {"provider": "emergent", "from_name": e("EMAIL_FROM_NAME", "FlexoCards"), "reply_to": e("EMAIL_REPLY_TO", ""),
             "site_url": e("APP_PUBLIC_URL", ""), "smtp_host": e("SMTP_HOST", ""), "smtp_port": int(e("SMTP_PORT", "465") or 465),
             "smtp_secure": e("SMTP_SECURE", "ssl"), "smtp_user": e("SMTP_USER", ""), "smtp_pass": e("SMTP_PASS", ""),
