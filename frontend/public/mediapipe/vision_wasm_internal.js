@@ -1,3 +1,4 @@
+/* eslint-disable */
 // This code implements the `-sMODULARIZE` settings by taking the generated
 // JS program code (INNER_JS_CODE) and wrapping it in a factory function.
 
