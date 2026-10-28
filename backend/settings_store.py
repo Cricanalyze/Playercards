@@ -5,13 +5,18 @@ from cryptography.fernet import Fernet, InvalidToken
 _CACHE: dict = {}
 _fernet = Fernet(os.environ["SETTINGS_ENC_KEY"].encode())
 
-SECRET_FIELDS = {"razorpay": {"key_secret", "webhook_secret"}, "email": {"smtp_pass"}}
+SECRET_FIELDS = {"razorpay": {"key_secret", "webhook_secret"}, "email": {"smtp_pass"}, "clerk": {"webhook_secret"}}
+SOCIAL_KEYS = ("instagram", "facebook", "x", "youtube", "linkedin", "whatsapp", "telegram", "threads")
 
 
 def env_defaults(section: str) -> dict:
     e = os.environ.get
     if section == "razorpay":
         return {"key_id": e("RAZORPAY_KEY_ID", ""), "key_secret": e("RAZORPAY_KEY_SECRET", ""), "webhook_secret": e("RAZORPAY_WEBHOOK_SECRET", "")}
+    if section == "clerk":
+        return {"webhook_secret": e("CLERK_WEBHOOK_SECRET", "")}
+    if section == "social":
+        return {k: "" for k in SOCIAL_KEYS}
     return {"provider": "emergent", "from_name": e("EMAIL_FROM_NAME", "FlexoCards"), "reply_to": e("EMAIL_REPLY_TO", ""),
             "site_url": e("APP_PUBLIC_URL", ""), "smtp_host": e("SMTP_HOST", ""), "smtp_port": int(e("SMTP_PORT", "465") or 465),
             "smtp_secure": e("SMTP_SECURE", "ssl"), "smtp_user": e("SMTP_USER", ""), "smtp_pass": e("SMTP_PASS", ""),

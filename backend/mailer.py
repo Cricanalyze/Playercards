@@ -108,7 +108,7 @@ def _brand_text(brand: str, size: int) -> str:
             if brand.lower() == "flexocards" else f'<span style="{FONT};font-size:{size}px;font-weight:900;color:{NAVY}">{brand}</span>')
 
 
-def render(cfg: dict, heading: str, paragraphs: list, cta: tuple = None, details: list = None, eyebrow: str = "") -> str:
+def render(cfg: dict, heading: str, paragraphs: list, cta: tuple = None, details: list = None, eyebrow: str = "", code: str = "") -> str:
     brand = escape(cfg["from_name"] or "FlexoCards")
     site = (cfg.get("site_url") or "").rstrip("/")
     https = site.startswith("https://")
@@ -123,16 +123,28 @@ def render(cfg: dict, heading: str, paragraphs: list, cta: tuple = None, details
             for k, v in details)
         box = (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 22px;background:#f8fafc;'
                f'border:1px solid #e5e7eb;border-left:4px solid {GOLD};border-radius:10px;border-collapse:separate">{rows}</table>')
+    otp = ""
+    if code:
+        otp = (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 22px"><tr><td align="center" '
+               f'style="background:{NAVY};border-radius:14px;padding:22px 12px;border:2px dashed {GOLD}">'
+               f'<p style="margin:0 0 6px;{FONT};font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#94a3b8">Your code</p>'
+               f'<p style="margin:0;font-family:Consolas,Menlo,monospace;font-size:38px;font-weight:800;letter-spacing:12px;color:{GOLD}">{escape(code)}</p>'
+               f'</td></tr></table>')
     button = ""
-    if cta and https:
+    href = (cta[1] if cta and cta[1].startswith("https://") else site + cta[1] if cta and https else "") if cta else ""
+    if href:
         button = (f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 6px"><tr><td style="background:{GOLD};border-radius:999px">'
-                  f'<a href="{escape(site + cta[1])}" style="display:inline-block;padding:14px 30px;{FONT};font-size:15px;font-weight:800;'
+                  f'<a href="{escape(href)}" style="display:inline-block;padding:14px 30px;{FONT};font-size:15px;font-weight:800;'
                   f'color:{NAVY};text-decoration:none;text-transform:uppercase;letter-spacing:.6px">{escape(cta[0])} &rarr;</a></td></tr></table>')
     links = ""
     if https:
         links = " &nbsp;·&nbsp; ".join(f'<a href="{escape(site + p)}" style="color:{GOLD};text-decoration:none;font-weight:600">{label}</a>'
                                        for label, p in (("Create a card", "/create"), ("Pricing", "/pricing"), ("Blog", "/blog"), ("Help", "/help")))
         links = f'<p style="margin:0 0 14px;{FONT};font-size:13px">{links}</p>'
+    social = " &nbsp;&nbsp; ".join(f'<a href="{escape(u)}" style="color:#ffffff;text-decoration:none;font-weight:700;font-size:12px">{label}</a>'
+                                   for label, u in social_links(cfg.get("social") or {}))
+    if social:
+        links += f'<p style="margin:0 0 14px;{FONT}">{social}</p>'
     return (
         f'<div style="display:none;max-height:0;overflow:hidden;opacity:0">{escape(heading)} — {brand}</div>'
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f6;padding:28px 12px"><tr><td align="center">'
@@ -144,7 +156,7 @@ def render(cfg: dict, heading: str, paragraphs: list, cta: tuple = None, details
         f'<p style="margin:0 0 10px;{FONT};font-size:11px;font-weight:800;letter-spacing:3px;text-transform:uppercase;color:{GOLD}">{escape(eyebrow or brand)}</p>'
         f'<h1 style="margin:0;{FONT};font-size:28px;line-height:1.15;font-weight:900;color:#ffffff;text-transform:uppercase;letter-spacing:-.3px">{escape(heading)}</h1>'
         f'</td></tr>'
-        f'<tr><td style="padding:30px 32px 26px">{body}{box}{button}</td></tr>'
+        f'<tr><td style="padding:30px 32px 26px">{body}{otp}{box}{button}</td></tr>'
         f'<tr><td style="background:#081330;padding:26px 32px;text-align:center">'
         f'<p style="margin:0 0 4px;{FONT};font-size:20px;font-weight:900;font-style:italic"><span style="color:#ffffff">Flexo</span><span style="color:{GOLD}">Cards</span></p>'
         f'<p style="margin:0 0 14px;{FONT};font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#94a3b8">Create &nbsp;·&nbsp; Customize &nbsp;·&nbsp; Share</p>'
@@ -152,6 +164,14 @@ def render(cfg: dict, heading: str, paragraphs: list, cta: tuple = None, details
         f'<p style="margin:0 0 6px;{FONT};font-size:11px;line-height:1.6;color:#94a3b8">Sent by {brand}, a product of Buddy Innovations and Technologies Private Limited.</p>'
         f'<p style="margin:0;{FONT};font-size:11px;color:#64748b">We never ask for your password or card details by email.</p>'
         f'</td></tr></table></td></tr></table>')
+
+
+SOCIAL = (("instagram", "Instagram"), ("facebook", "Facebook"), ("x", "X"), ("youtube", "YouTube"), ("linkedin", "LinkedIn"),
+          ("whatsapp", "WhatsApp"), ("telegram", "Telegram"), ("threads", "Threads"))
+
+
+def social_links(social: dict) -> list:
+    return [(label, social[k]) for k, label in SOCIAL if (social.get(k) or "").startswith("https://")]
 
 
 # ---------- providers ----------

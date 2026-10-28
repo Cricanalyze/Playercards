@@ -1,5 +1,9 @@
+import { useEffect, useState } from "react";
+import axios from "axios";
 import { Link } from "react-router-dom";
 import { Logo } from "./Logo";
+import { SocialIcons } from "./Social";
+import { API } from "@/lib/api";
 
 export const COMPANY = "Buddy Innovations and Technologies Private Limited";
 
@@ -10,12 +14,15 @@ const cols = [
 ];
 
 export default function Footer() {
+  const [social, setSocial] = useState({});
+  useEffect(() => { axios.get(`${API}/site/social`).then((r) => setSocial(r.data)).catch(() => {}); }, []);
   return (
     <footer className="border-t border-border mt-24">
       <div className="container-x py-14 grid gap-10 grid-cols-2 md:grid-cols-[1.4fr_repeat(3,1fr)]">
         <div className="space-y-3 max-w-xs col-span-2 md:col-span-1">
           <Logo />
           <p className="text-sm text-muted-foreground">Your Game. Your Identity. Your Card. Original player cards for every sport and game.</p>
+          <SocialIcons links={social} className="pt-1" />
         </div>
         {cols.map((c) => (
           <div key={c.title}>

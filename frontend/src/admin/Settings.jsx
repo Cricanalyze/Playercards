@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApi, errMsg, fmtDateTime } from "@/lib/api";
 import { PageHead } from "./AdminApp";
+import { ClerkEmails, TemplatesPreview, SocialSettings } from "./SettingsExtra";
 
 const F = ({ label, hint, children }) => (
   <div className="space-y-1.5 min-w-0"><Label>{label}</Label>{children}{hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}</div>
@@ -131,9 +132,12 @@ export default function Settings() {
   if (!d) return <p className="text-muted-foreground">Loading settings…</p>;
   return (
     <div className="space-y-6" data-testid="admin-settings">
-      <PageHead title="Settings" sub="Payment keys and email sending. Only Super Admins can see this page." />
+      <PageHead title="Settings" sub="Payments, email, sign-in emails and social links. Only Super Admins can see this page." />
       <RazorpaySettings key={`r${v}`} data={d.razorpay} onSaved={(r) => setD({ ...d, razorpay: r })} onReset={() => reset("razorpay")} />
       <EmailSettings key={`e${v}`} data={d.email} onSaved={(r) => (r ? setD({ ...d, email: r }) : load())} onReset={() => reset("email")} />
+      <ClerkEmails key={`c${v}`} data={d.clerk} onSaved={(r) => setD({ ...d, clerk: r })} onReset={() => reset("clerk")} />
+      <TemplatesPreview templates={d.templates} />
+      <SocialSettings key={`s${v}`} data={d.social} onSaved={(r) => setD({ ...d, social: r })} />
       <EmailLog rows={d.email_log} />
     </div>
   );

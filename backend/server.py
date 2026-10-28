@@ -33,6 +33,7 @@ try:
     from backend.storage import init_storage, put_object, get_object, APP_PREFIX
     from backend import settings_store
     from backend.mailer import send_email, render, EmailError
+    from backend import email_templates as ET
 except ModuleNotFoundError:
     from clerk_auth import clerk_router, require_user, _publishable_key, _secret_key
     from seed_data import SPORTS
@@ -41,6 +42,7 @@ except ModuleNotFoundError:
     from storage import init_storage, put_object, get_object, APP_PREFIX
     import settings_store
     from mailer import send_email, render, EmailError
+    import email_templates as ET
 
 client = AsyncIOMotorClient(os.environ["MONGO_URL"])
 db = client[os.environ["DB_NAME"]]
@@ -110,6 +112,7 @@ def revoke_clerk_sessions(user_id: str) -> int:
 async def _load_member(user: dict) -> dict:
     uid = user["user_id"]
     m = await db.users.find_one({"user_id": uid}, NOFIELDS)
+    is_new = m is None
     if m is None or not m.get("role"):
         prof = clerk_profile(uid)
         admins = {e.strip().lower() for e in os.environ.get("ADMIN_EMAIL", "").split(",") if e.strip()}
@@ -122,6 +125,8 @@ async def _load_member(user: dict) -> dict:
             upsert=True, projection=NOFIELDS, return_document=ReturnDocument.AFTER)
         if role == "super_admin":
             await audit({"user_id": uid, "email": prof["email"]}, "owner.bootstrap", uid, {"role": role})
+        if is_new and prof["email"] and not prof["email"].endswith("@example.com"):
+            notify(prof["email"], ET.welcome(prof["name"]), "welcome")
     await db.users.update_one({"user_id": uid}, {"$set": {"env": ENV, "last_seen_at": iso()}})
     if m.get("status") in ("suspended", "deleted"):
         raise HTTPException(403, f"This account is {m['status']}. Contact support.")
@@ -481,12 +486,7 @@ async def activate_payment(pay: dict, rzp_payment_id: str, via: str):
     await db.payments.update_one({"id": pay["id"]}, {"$set": {"subscription_id": sub_id}})
     if pay.get("user_email"):
         end = (await db.subscriptions.find_one({"id": sub_id}, NOFIELDS))["end_at"][:10]
-        notify(pay["user_email"], f"Your FlexoCards {plan['name']} plan is active", f"{plan['name']} plan activated",
-               ["Thanks for upgrading! Your payment went through and your new plan is ready to use.",
-                "Paid plans unlock premium templates, public share links and 6-hour card editing."],
-               ("Create a card", "/create"), "receipt", eyebrow="Payment receipt",
-               details=[("Plan", f"{plan['name']} · {'Monthly' if pay['cycle'] == 'month' else 'Yearly'}"), ("Amount paid", f"₹{pay['amount_inr']}"),
-                        ("Cards per month", plan["cards_per_month"]), ("Active until", end), ("Payment ID", rzp_payment_id)])
+        notify(pay["user_email"], ET.receipt(plan["name"], pay["cycle"], pay["amount_inr"], plan["cards_per_month"], end, rzp_payment_id), "receipt")
 
 
 class VerifyIn(BaseModel):
@@ -1383,10 +1383,7 @@ async def admin_invite(body: InviteIn, member: dict = Depends(require_perm("admi
            "created_at": iso(), "expires_at": iso(now() + timedelta(hours=body.expires_hours))}
     await db.admin_invitations.insert_one(inv)
     await audit(member, "invitation.created", inv["email"], {"role": body.role, "permissions": perms, "expires_at": inv["expires_at"]})
-    notify(inv["email"], "You're invited to the FlexoCards admin team", "Join the admin team",
-           [f"{member.get('name') or 'A FlexoCards admin'} invited you to join the FlexoCards admin team as {body.role.replace('_', ' ')}.",
-            f"This single-use invitation expires on {inv['expires_at'][:10]}. Sign in with this email address to accept it."],
-           ("Accept invitation", f"/invite/{token}"), "invitation", eyebrow="Admin invitation")
+    notify(inv["email"], ET.admin_invite(member.get("name"), body.role, inv["expires_at"][:10], token), "invitation")
     return {"id": inv["id"], "token": token, "expires_at": inv["expires_at"]}
 
 
@@ -1602,13 +1599,8 @@ async def admin_blog_status(post_id: str, body: PostStatusIn, member: dict = Dep
     await audit(member, f"blog.{body.status}", post_id, {"note": body.note})
     author = await db.users.find_one({"user_id": p["author_id"]}, NOFIELDS)
     if author and author["user_id"] != member["user_id"] and body.status in ("published", "rejected"):
-        if body.status == "published":
-            notify(author["email"], "Your FlexoCards blog post is live", "Your post is published",
-                   [f"Good news! “{p['title']}” is now live on the FlexoCards blog."], ("Read your post", f"/blog/{p['slug']}"), "blog")
-        else:
-            notify(author["email"], "Update on your FlexoCards blog post", "Changes needed",
-                   [f"An admin reviewed “{p['title']}” and sent it back to you.", f"Note: {body.note or 'No note added.'}",
-                    "You can edit the post and submit it again."], ("Open my posts", "/write"), "blog")
+        tpl = ET.blog_published(p["title"], p["slug"]) if body.status == "published" else ET.blog_rejected(p["title"], body.note)
+        notify(author["email"], tpl, "blog")
     return {"ok": True}
 
 
@@ -1631,9 +1623,7 @@ async def admin_blog_add_author(body: AuthorIn, member: dict = Depends(require_p
         raise HTTPException(404, "No active FlexoCards account uses this email. Ask them to sign up first.")
     await db.users.update_one({"user_id": u["user_id"]}, {"$set": {"can_blog": True, "blog_granted_at": iso(), "blog_granted_by": member["user_id"]}})
     await audit(member, "blog.author_added", u["user_id"], {"email": u["email"]})
-    notify(u["email"], "You can now write for the FlexoCards blog", "You're a blog author",
-           ["An admin gave you access to write posts for the FlexoCards blog.", "Your posts are reviewed by an admin before they go live."],
-           ("Write a post", "/write/new"), "blog")
+    notify(u["email"], ET.blog_author(), "blog")
     return {"user_id": u["user_id"], "email": u["email"], "name": u.get("name")}
 
 
@@ -1651,11 +1641,15 @@ def email_cfg() -> dict:
     return settings_store.get("email")
 
 
-async def _deliver(to: str, subject: str, heading: str, paras: list, cta, kind: str, cfg: dict = None, details: list = None, eyebrow: str = ""):
+def render_tpl(cfg: dict, tpl: dict) -> str:
+    return render({**cfg, "social": settings_store.get("social")}, tpl["heading"], tpl["paras"], tpl["cta"], tpl["details"], tpl["eyebrow"], tpl["code"])
+
+
+async def _deliver(to: str, tpl: dict, kind: str, cfg: dict = None):
     cfg = cfg or email_cfg()
-    log = {"id": new_id(), "to": to, "subject": subject, "kind": kind, "provider": cfg["provider"], "created_at": iso()}
+    log = {"id": new_id(), "to": to, "subject": tpl["subject"], "kind": kind, "provider": cfg["provider"], "created_at": iso()}
     try:
-        await send_email(cfg, to, subject, render(cfg, heading, paras, cta, details, eyebrow))
+        await send_email(cfg, to, tpl["subject"], render_tpl(cfg, tpl))
         log["status"] = "sent"
     except (EmailError, ValueError, httpx.HTTPError) as e:
         log.update(status="failed", error=str(e)[:300])
@@ -1665,8 +1659,8 @@ async def _deliver(to: str, subject: str, heading: str, paras: list, cta, kind: 
     return log
 
 
-def notify(to: str, subject: str, heading: str, paras: list, cta=None, kind: str = "notice", details: list = None, eyebrow: str = ""):
-    asyncio.create_task(_deliver(to, subject, heading, paras, cta, kind, details=details, eyebrow=eyebrow))
+def notify(to: str, tpl: dict, kind: str = "notice"):
+    asyncio.create_task(_deliver(to, tpl, kind))
 
 
 def _rzp_view() -> dict:
@@ -1686,7 +1680,8 @@ def _email_view() -> dict:
 @admin.get("/settings")
 async def admin_settings(member: dict = Depends(require_perm("settings.manage"))):
     logs = await db.email_log.find({}, NOFIELDS).sort("created_at", -1).limit(15).to_list(15)
-    return {"razorpay": _rzp_view(), "email": _email_view(), "email_log": logs}
+    return {"razorpay": _rzp_view(), "email": _email_view(), "email_log": logs, "clerk": _clerk_view(),
+            "social": settings_store.get("social"), "templates": [{"id": k, "label": v[0]} for k, v in ET.SAMPLES.items()]}
 
 
 class RzpSettingsIn(BaseModel):
@@ -1740,11 +1735,11 @@ async def admin_set_email(body: EmailSettingsIn, member: dict = Depends(require_
 
 @admin.delete("/settings/{section}")
 async def admin_reset_settings(section: str, member: dict = Depends(require_perm("settings.manage"))):
-    if section not in ("razorpay", "email"):
+    if section not in ("razorpay", "email", "clerk", "social"):
         raise HTTPException(404, "Unknown settings section")
     await settings_store.reset(db, section)
     await audit(member, f"settings.{section}_reset", section)
-    return {"razorpay": _rzp_view(), "email": _email_view()}
+    return {"razorpay": _rzp_view(), "email": _email_view(), "clerk": _clerk_view(), "social": settings_store.get("social")}
 
 
 @admin.post("/settings/email/test")
@@ -1753,13 +1748,109 @@ async def admin_test_email(request: Request, member: dict = Depends(require_perm
     if not member.get("email"):
         raise HTTPException(400, "Your account has no email address.")
     cfg = email_cfg()
-    log = await _deliver(member["email"], "FlexoCards test email", "Your email is working",
-                         [f"This test was sent using {'your SMTP server (' + cfg['smtp_host'] + ')' if cfg['provider'] == 'smtp' else 'Emergent email'}.",
-                          "Payment receipts, admin invitations and blog notifications will be sent the same way."], ("Open admin panel", "/admin/settings"), "test", cfg,
-                         details=[("Provider", "SMTP · " + cfg["smtp_host"] if cfg["provider"] == "smtp" else "Emergent email"), ("Sender name", cfg["from_name"])], eyebrow="Test email")
+    log = await _deliver(member["email"], ET.test_email("SMTP · " + cfg["smtp_host"] if cfg["provider"] == "smtp" else "Emergent email", cfg["from_name"]), "test", cfg)
     if log["status"] != "sent":
         raise HTTPException(400, f"Test email failed: {log.get('error', 'unknown error')}")
     return {"ok": True, "to": member["email"], "provider": cfg["provider"]}
+
+
+@admin.get("/settings/email/preview/{tid}")
+async def admin_email_preview(tid: str, member: dict = Depends(require_perm("settings.manage"))):
+    if tid not in ET.SAMPLES:
+        raise HTTPException(404, "Unknown template")
+    tpl = ET.SAMPLES[tid][1]()
+    return {"subject": tpl["subject"], "html": render_tpl(email_cfg(), tpl)}
+
+
+@admin.post("/settings/email/preview/{tid}/send")
+async def admin_email_preview_send(tid: str, request: Request, member: dict = Depends(require_perm("settings.manage"))):
+    rate_limit(request, "email_test", 10)
+    if tid not in ET.SAMPLES or not member.get("email"):
+        raise HTTPException(404, "Unknown template")
+    tpl = ET.SAMPLES[tid][1]()
+    log = await _deliver(member["email"], {**tpl, "subject": f"[Sample] {tpl['subject']}"}, f"sample:{tid}")
+    if log["status"] != "sent":
+        raise HTTPException(400, f"Sample email failed: {log.get('error', 'unknown error')}")
+    return {"ok": True, "to": member["email"]}
+
+
+def _clerk_view() -> dict:
+    sec = settings_store.get("clerk")["webhook_secret"]
+    return {"webhook_secret_hint": settings_store.hint(sec), "connected": bool(sec),
+            "webhook_url": f"{(email_cfg()['site_url'] or '').rstrip('/')}/api/clerk/webhook"}
+
+
+class ClerkSettingsIn(BaseModel):
+    webhook_secret: str = Field(pattern=r"^whsec_[A-Za-z0-9+/=]{10,200}$")
+
+
+@admin.put("/settings/clerk")
+async def admin_set_clerk(body: ClerkSettingsIn, member: dict = Depends(require_perm("settings.manage"))):
+    await settings_store.save(db, "clerk", {"webhook_secret": body.webhook_secret.strip()}, member["user_id"], iso())
+    await audit(member, "settings.clerk_updated", "clerk")
+    return _clerk_view()
+
+
+SOCIAL_URL = r"^$|^https://[^\s]{4,300}$"
+
+
+class SocialIn(BaseModel):
+    instagram: str = Field(default="", pattern=SOCIAL_URL)
+    facebook: str = Field(default="", pattern=SOCIAL_URL)
+    x: str = Field(default="", pattern=SOCIAL_URL)
+    youtube: str = Field(default="", pattern=SOCIAL_URL)
+    linkedin: str = Field(default="", pattern=SOCIAL_URL)
+    whatsapp: str = Field(default="", pattern=SOCIAL_URL)
+    telegram: str = Field(default="", pattern=SOCIAL_URL)
+    threads: str = Field(default="", pattern=SOCIAL_URL)
+
+
+@admin.put("/settings/social")
+async def admin_set_social(body: SocialIn, member: dict = Depends(require_perm("settings.manage"))):
+    await settings_store.reset(db, "social")
+    await settings_store.save(db, "social", {k: v.strip() for k, v in body.model_dump().items()}, member["user_id"], iso())
+    await audit(member, "settings.social_updated", "social", {k: bool(v) for k, v in body.model_dump().items()})
+    return settings_store.get("social")
+
+
+@api.get("/site/social")
+async def site_social():
+    return {k: v for k, v in settings_store.get("social").items() if v}
+
+
+@api.post("/clerk/webhook")
+async def clerk_webhook(request: Request):
+    import base64
+    secret = settings_store.get("clerk")["webhook_secret"]
+    if not secret:
+        raise HTTPException(503, "Clerk webhook is not set up")
+    raw = await request.body()
+    sid, ts, sigs = (request.headers.get(h, "") for h in ("svix-id", "svix-timestamp", "svix-signature"))
+    if not (sid and ts.isdigit() and sigs) or abs(time.time() - int(ts)) > 300:
+        raise HTTPException(400, "Invalid webhook headers")
+    key = base64.b64decode(secret.split("_", 1)[1])
+    expected = base64.b64encode(hmac.new(key, f"{sid}.{ts}.".encode() + raw, hashlib.sha256).digest()).decode()
+    if not any(hmac.compare_digest(expected, s.split(",", 1)[1]) for s in sigs.split() if "," in s):
+        raise HTTPException(401, "Invalid signature")
+    if await db.webhook_events.find_one({"event_id": f"clerk:{sid}"}):
+        return {"ok": True, "duplicate": True}
+    evt = json.loads(raw)
+    d = evt.get("data") or {}
+    if evt.get("type") != "email.created" or d.get("delivered_by_clerk") or not d.get("to_email_address"):
+        return {"ok": True, "skipped": True}
+    slug, v = d.get("slug") or "", d.get("data") or {}
+    link = v.get("magic_link") or v.get("action_url") or v.get("url") or ""
+    if v.get("otp_code"):
+        tpl = ET.auth_code(slug, str(v["otp_code"])[:12], v.get("ttl_minutes"))
+    elif link.startswith("https://"):
+        tpl = ET.auth_link(slug, link)
+    else:
+        tpl = ET.security_notice(slug, d.get("subject") or "FlexoCards account update")
+    log = await _deliver(d["to_email_address"], tpl, f"clerk:{slug}")
+    if log["status"] != "sent":
+        raise HTTPException(500, "Email delivery failed")
+    await db.webhook_events.insert_one({"event_id": f"clerk:{sid}", "type": "clerk.email.created", "slug": slug, "received_at": iso()})
+    return {"ok": True}
 
 
 app.include_router(api)
