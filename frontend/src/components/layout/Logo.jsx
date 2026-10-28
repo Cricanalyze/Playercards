@@ -1,13 +1,14 @@
 import { Link } from "react-router-dom";
 
+// Light theme shows the full wordmark; dark theme uses the mark + light text so the navy lettering stays readable.
 export const Logo = ({ className = "" }) => (
-  <Link to="/" data-testid="brand-logo-link" className={`flex items-center gap-2 group ${className}`}>
-    <span className="relative grid place-items-center w-9 h-11 rounded-md bg-gradient-to-br from-amber-300 via-amber-500 to-amber-700 shadow-[0_0_18px_rgba(212,175,55,.35)] rotate-[-6deg] group-hover:rotate-0 transition-transform duration-300">
-      <span className="font-display font-black text-slate-950 text-lg leading-none">F</span>
-      <span className="absolute inset-[3px] rounded-[4px] border border-slate-950/30" />
-    </span>
-    <span className="font-display font-black text-xl tracking-tight uppercase">
-      Flexo<span className="text-amber-500">Cards</span>
+  <Link to="/" data-testid="brand-logo-link" aria-label="FlexoCards home" className={`flex items-center gap-2 group shrink-0 ${className}`}>
+    <img src="/logo-wordmark.png" alt="FlexoCards" className="h-9 sm:h-10 w-auto dark:hidden" data-testid="brand-logo-wordmark" />
+    <span className="hidden dark:flex items-center gap-1.5">
+      <img src="/logo-mark.png" alt="" className="h-9 w-auto group-hover:-rotate-3 transition-transform duration-300" data-testid="brand-logo-mark" />
+      <span className="font-display font-black italic text-xl sm:text-2xl tracking-tight uppercase leading-none">
+        Flexo<span className="text-amber-400">Cards</span>
+      </span>
     </span>
   </Link>
 );
