@@ -34,6 +34,9 @@ export const BG_PRESETS = [
 ];
 
 export const DEMO_PLAYERS = [
+  { sport: "cricket", template: "legendary_edition", photo: "https://images.unsplash.com/photo-1599982946086-eb42d9e14eb8?crop=entropy&cs=srgb&fm=jpg&w=800&q=80",
+    data: { name: "Arjun Mehra", nickname: "The Wall", team: "Coastal Kings XI", jersey: "18", position: "Top-order Batter", country: "Demo", season: "2026", rating: "93",
+      tagline: "Built for the long innings.", achievements: ["Player of the Series (fictional)"], stats: { matches: "72", runs: "3,184", wickets: "14", highest_score: "176*", batting_avg: "52.4", strike_rate: "138.6" } } },
   { sport: "basketball", template: "black_gold_elite", photo: "https://images.pexels.com/photos/20615453/pexels-photo-20615453.jpeg?auto=compress&cs=tinysrgb&w=800",
     data: { name: "Marcus Vance", nickname: "The Engine", team: "Harbor City Hawks", jersey: "23", position: "Shooting Guard", country: "Demo", season: "2026", rating: "91",
       tagline: "Clutch in the fourth.", achievements: ["League MVP (fictional)"], stats: { games: "64", points: "1,712", rebounds: "402", assists: "388", steals: "97", blocks: "31" } } },

@@ -32,11 +32,11 @@ _http.mount("https://", HTTPAdapter(pool_maxsize=40, max_retries=_retry))  # mat
 
 
 def _publishable_key() -> str:
-    return os.environ.get("CLERK_PUBLISHABLE_KEY", "")
+    return os.environ.get("CLERK_PUBLISHABLE_KEY") or os.environ.get("CLERK_OWN_PUBLISHABLE_KEY", "")
 
 
 def _secret_key() -> str:
-    return os.environ.get("CLERK_SECRET_KEY", "")
+    return os.environ.get("CLERK_SECRET_KEY") or os.environ.get("CLERK_OWN_SECRET_KEY", "")
 
 
 def _is_production() -> bool:

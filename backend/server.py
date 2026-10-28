@@ -20,11 +20,11 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 try:
-    from backend.clerk_auth import clerk_router, require_user
+    from backend.clerk_auth import clerk_router, require_user, _publishable_key, _secret_key
     from backend.seed_data import SPORTS, TEMPLATES, PLANS, LAYOUTS
     from backend.rbac import ROLES, RANK, PERMISSIONS, ROLE_DEFAULTS, STAFF_ROLES, RETIRED_ROLES, effective_role, effective_perms
 except ModuleNotFoundError:
-    from clerk_auth import clerk_router, require_user
+    from clerk_auth import clerk_router, require_user, _publishable_key, _secret_key
     from seed_data import SPORTS, TEMPLATES, PLANS, LAYOUTS
     from rbac import ROLES, RANK, PERMISSIONS, ROLE_DEFAULTS, STAFF_ROLES, RETIRED_ROLES, effective_role, effective_perms
 
@@ -35,7 +35,7 @@ api = APIRouter(prefix="/api")
 logger = logging.getLogger("rivalcard")
 logging.basicConfig(level=logging.INFO)
 
-ENV = "live" if os.environ.get("CLERK_PUBLISHABLE_KEY", "").startswith("pk_live_") else "preview"
+ENV = "live" if _publishable_key().startswith("pk_live_") else "preview"
 IN_ENV = {"env": {"$in": [ENV, None]}}
 NOFIELDS = {"_id": 0}
 ACTIVE_STATES = ["active", "trialing", "past_due"]
@@ -71,7 +71,7 @@ def rate_limit(request: Request, bucket: str, limit: int, window: int = 60):
 # ---------- Clerk backend helpers ----------
 def _clerk(method, path, **kw):
     r = requests.request(method, f"https://api.clerk.com/v1{path}", timeout=10,
-                         headers={"Authorization": f"Bearer {os.environ['CLERK_SECRET_KEY']}", "User-Agent": "rivalcard-app"}, **kw)
+                         headers={"Authorization": f"Bearer {_secret_key()}", "User-Agent": "rivalcard-app"}, **kw)
     r.raise_for_status()
     return r.json()
 
