@@ -1,0 +1,49 @@
+{
+  "summary": "First full run (backend + frontend) on RivalCard. Backend: all 64 pytest tests pass (51 main-agent tests in test_rivalcard_api.py + 13 new ones in test_rivalcard_extra.py). They cover public catalog, anonymous export entitlements (free = watermark, premium = 402), 401/403 authz, metrics, users filters/sort/paging/regex escaping, complimentary pro_creator grant -> no-watermark premium export -> revoke -> 402, premium_card eligible-template rule plus single-template unlock, expiry via Mongo end_at -> expired, role-change security, the invitation lifecycle (staff accepts -> support with default perms, reuse 400, other email 403, revoke), suspend/reactivate, saved-card limit (6th -> 402) and per-user isolation (404), sports create/update/deactivate, template invalid layout/accent -> 422, plan price change keeping the subscription plan_snapshot, and no raw invite token in audit logs. Frontend (Playwright, desktop 1920 + mobile 390): homepage hero, fictional demo label, sports search/category chips/empty state, sport click -> /create?sport=kabaddi, pricing from backend, FAQ accordion and contact toast all work. The anonymous editor works: template pick, photo upload, zoom slider, name/stat live preview, Undo, Story 9:16 (1.778) and Card 5:7 (1.4), and Card PNG export gives a 1080x1512 PNG in export-result-image. A premium template shows the badge and premium-required-dialog. MediaPipe background removal took about 3.5s; the cutout switch, presets, color swatch and custom color (#ff0000) show in the preview, and export works with the cutout. Mobile: no horizontal overflow on home, /create, /dashboard or /admin/users; mobile menu navigates. Signed-in flows via Clerk sign-in tickets all work: super admin overview metrics, users search, Manage dialog, UI grant (entitlements flip to All/Off/200), Subscriptions, Plans, Sports, Templates, Audit and Team pages, invite creation and revoke via UI, revoked-invite page. Player sees admin-access-denied on /admin. Dashboard shows the plan, history and saved cards; save from the editor, premium export once granted, and delete work. Session survives a reload; sign-out returns to the signed-out UI and /dashboard redirects to /sign-in. No page errors, no backend tracebacks. Test users restored (admin super_admin/active; player user/free/no active subs; staff user/free).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/subscriptions/{id}/extend", "issue": "Extending a canceled (revoked) or expired subscription sets status back to 'active', so revoked access can be brought back. The admin UI shows an Extend button on CANCELED/EXPIRED rows. Fine if this is intended; otherwise only allow extend on ACTIVE_STATES or label it 'Reactivate'."},
+      {"endpoint": "POST /api/invitations/accept", "issue": "If the invited role is not higher than the member's current role, the invitation is still marked accepted and the response returns {role: inv.role}, but the role is not changed. The response is misleading."},
+      {"endpoint": "rate_limit()", "issue": "The client IP is taken from the first X-Forwarded-For entry, which the client controls. A client can bypass the per-IP limits on export, reports and invite-accept by rotating the header. Use the right-most trusted hop, or key authenticated buckets by user_id."},
+      {"endpoint": "GET /api/admin/metrics", "issue": "Subscription and payment counts are not filtered by env, but user counts are (IN_ENV). Preview and live numbers can mix if they share a DB."},
+      {"endpoint": "PATCH /api/admin/users/{id}/role, /soft-delete, PATCH status", "issue": "The 409 'last super admin' branch cannot be reached through the API. The actor is always an active super_admin who is not the target, and self-actions return 403 first. This is harmless defense-in-depth, but the review expectation 'demoting/suspending the last super_admin returns 409' can only be observed as 403."},
+      {"endpoint": "POST /api/cards/export, /api/events", "issue": "sport_id is not checked against the sports collection, so analytics can record arbitrary sport ids."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Dashboard saved cards", "issue": "saved-card-delete deletes right away with no confirmation or undo.", "selector": "[data-testid^=saved-card-delete-]", "priority": "LOW"},
+      {"component": "PhotoPanel background removal", "issue": "run() calls setPhoto({...photo, cutout}) with the photo captured before the await. Zoom or position changes made during processing are overwritten.", "selector": "[data-testid=bg-remove-button]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Overview", "issues": ["The date range filters (metrics-from-input / metrics-to-input) use the browser's native date picker (mm/dd/yyyy) instead of the shadcn Calendar/Popover"]},
+      {"screen": "Dashboard subscription history (desktop)", "issues": ["Status badges and the source column are not aligned between rows (flex justify-between with varying name widths). Use a grid or table."]},
+      {"screen": "/create on mobile", "issues": ["The preview sits above the tabs, so users editing Details/Stats can't see the live preview without scrolling back up", "The tab bar scrolls sideways with a hidden scrollbar; '5 Stats' and '6 Style' are off-screen at 390px with no hint"]},
+      {"screen": "Admin users table on mobile", "issues": ["The Manage button and Joined/Last active columns are only reachable by scrolling the table sideways, with no visual hint"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_rivalcard_api.py", "/app/backend/tests/test_rivalcard_extra.py", "/app/test_reports/pytest/pytest_results.xml", "/app/tests/clerk_ticket.py", "/app/tests/restore_state.py"],
+  "action_items": [
+    "Decide whether Extend may reactivate canceled/expired subscriptions; if not, restrict it to ACTIVE_STATES and hide the Extend button on non-active rows",
+    "Replace the native date inputs on Admin Overview with the shadcn Calendar date picker",
+    "Make invitations/accept return the role actually in effect (or reject invites that would not change the role)",
+    "Harden rate_limit IP extraction (do not trust the client-supplied first X-Forwarded-For hop)",
+    "Optional UX: confirm before deleting a saved card; align the dashboard subscription history; make the mobile editor preview reachable while editing (sticky mini preview)"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 911 lines; split it into routers (public, me, admin_users, admin_subs, admin_catalog, invitations)",
+    "'import re' is repeated inside handlers; move it to module level",
+    "clerk_profile/revoke_clerk_sessions use synchronous requests inside async handlers, which blocks the event loop on every first login, invite accept and suspend. Use httpx.AsyncClient or run_in_threadpool",
+    "expire_sweep() runs an update_many on every /me, export and metrics request; fine at MVP scale, but consider a periodic task",
+    "The CardIn.data size check runs before photo is popped, so a card with a large base64 photo field gets 422 instead of the photo being stripped"
+  ],
+  "updated_files": ["/app/backend/tests/test_rivalcard_extra.py", "/app/tests/clerk_ticket.py", "/app/tests/restore_state.py"],
+  "success_rate": {"backend": "100% (64/64)", "frontend": "100% of tested flows (only minor UX/design issues)"},
+  "test_credentials": "From /app/memory/test_credentials.md (accurate): admin@playercard.app super_admin; player+clerk_test@example.com user; staff+clerk_test@example.com user (restored from support to user after the invite test).",
+  "seed_data_creation": "Test data: TEST_-prefixed invitations (revoked/expired), canceled/expired complimentary subscriptions on the player, audit entries, card events. The test_zorbing sport was created and deleted. Plan pro_creator price was changed and restored. No saved cards remain.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend/tests && python -m pytest test_rivalcard_api.py test_rivalcard_extra.py -n 0 (run serially; the tests share the player's subscription state). UI sign-in: python3 /app/tests/clerk_ticket.py <email> prints a sign-in ticket; open /sign-in?__clerk_ticket=<token> and wait about 6s. Clerk sign-out is .cl-userButtonTrigger, then the 'Sign out' button (class cl-userButtonPopoverActionButton). After tests run python3 /app/tests/restore_state.py to revoke the player's active subs and print role states. The first background removal took about 3.5s (model loads from Google storage; the wasm is served from /mediapipe)."
+}
