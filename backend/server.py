@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import json
@@ -10,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
+import httpx
 import requests
 from dotenv import load_dotenv
 from dateutil.relativedelta import relativedelta
@@ -29,12 +31,16 @@ try:
     from backend.seed_catalog import TEMPLATES, PLANS, LAYOUTS, BACKGROUNDS, BG_TIER_FEATURE, COLLECTIONS
     from backend.rbac import ROLES, RANK, PERMISSIONS, ROLE_DEFAULTS, STAFF_ROLES, RETIRED_ROLES, effective_role, effective_perms
     from backend.storage import init_storage, put_object, get_object, APP_PREFIX
+    from backend import settings_store
+    from backend.mailer import send_email, render, EmailError
 except ModuleNotFoundError:
     from clerk_auth import clerk_router, require_user, _publishable_key, _secret_key
     from seed_data import SPORTS
     from seed_catalog import TEMPLATES, PLANS, LAYOUTS, BACKGROUNDS, BG_TIER_FEATURE, COLLECTIONS
     from rbac import ROLES, RANK, PERMISSIONS, ROLE_DEFAULTS, STAFF_ROLES, RETIRED_ROLES, effective_role, effective_perms
     from storage import init_storage, put_object, get_object, APP_PREFIX
+    import settings_store
+    from mailer import send_email, render, EmailError
 
 client = AsyncIOMotorClient(os.environ["MONGO_URL"])
 db = client[os.environ["DB_NAME"]]
@@ -256,6 +262,7 @@ async def startup():
     await db.blog_posts.create_index([("status", 1), ("published_at", -1)])
     await db.saved_cards.create_index("share.id", sparse=True)
     await db.files.create_index("storage_path")
+    await settings_store.load_all(db)
     try:
         init_storage()
     except Exception as e:
@@ -396,7 +403,8 @@ RZP_API = "https://api.razorpay.com/v1"
 
 
 def rzp_keys():
-    return os.environ.get("RAZORPAY_KEY_ID", ""), os.environ.get("RAZORPAY_KEY_SECRET", "")
+    c = settings_store.get("razorpay")
+    return c["key_id"], c["key_secret"]
 
 
 def rzp(method: str, path: str, **kw):
@@ -411,7 +419,7 @@ def rzp(method: str, path: str, **kw):
 @api.get("/billing/config")
 async def billing_config():
     kid, sec = rzp_keys()
-    return {"enabled": bool(kid and sec), "key_id": kid if kid and sec else "", "webhooks": bool(os.environ.get("RAZORPAY_WEBHOOK_SECRET")),
+    return {"enabled": bool(kid and sec), "key_id": kid if kid and sec else "", "webhooks": bool(settings_store.get("razorpay")["webhook_secret"]),
             "mode": "test" if kid.startswith("rzp_test_") else "live" if kid else "not_configured"}
 
 
@@ -471,6 +479,12 @@ async def activate_payment(pay: dict, rzp_payment_id: str, via: str):
                                            "start_at": iso(), "end_at": iso(now() + delta), "auto_renew": False, "created_at": iso(),
                                            "history": [{"at": iso(), "event": "activated", "payment": pay["id"], "via": via}]})
     await db.payments.update_one({"id": pay["id"]}, {"$set": {"subscription_id": sub_id}})
+    if pay.get("user_email"):
+        end = (await db.subscriptions.find_one({"id": sub_id}, NOFIELDS))["end_at"][:10]
+        notify(pay["user_email"], f"Your FlexoCards {plan['name']} plan is active", "Payment received",
+               [f"Thanks! We received ₹{pay['amount_inr']} for the {plan['name']} plan ({'monthly' if pay['cycle'] == 'month' else 'yearly'}).",
+                f"Your plan is active until {end}. You get {plan['cards_per_month']} card downloads or shares each month.",
+                f"Payment reference: {rzp_payment_id}"], ("Open my dashboard", "/dashboard"), "receipt")
 
 
 class VerifyIn(BaseModel):
@@ -508,7 +522,7 @@ async def verify_payment(body: VerifyIn, member: dict = Depends(current_member))
 
 @api.post("/billing/webhook")
 async def razorpay_webhook(request: Request):
-    secret = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
+    secret = settings_store.get("razorpay")["webhook_secret"]
     if not secret:
         raise HTTPException(503, "Webhook secret not configured")
     raw = await request.body()
@@ -1367,6 +1381,10 @@ async def admin_invite(body: InviteIn, member: dict = Depends(require_perm("admi
            "created_at": iso(), "expires_at": iso(now() + timedelta(hours=body.expires_hours))}
     await db.admin_invitations.insert_one(inv)
     await audit(member, "invitation.created", inv["email"], {"role": body.role, "permissions": perms, "expires_at": inv["expires_at"]})
+    notify(inv["email"], "You're invited to the FlexoCards admin team", "Admin invitation",
+           [f"{member.get('name') or 'A FlexoCards admin'} invited you to join the FlexoCards admin team as {body.role.replace('_', ' ')}.",
+            f"This single-use invitation expires on {inv['expires_at'][:10]}. Sign in with this email address to accept it."],
+           ("Accept invitation", f"/invite/{token}"), "invitation")
     return {"id": inv["id"], "token": token, "expires_at": inv["expires_at"]}
 
 
@@ -1580,6 +1598,15 @@ async def admin_blog_status(post_id: str, body: PostStatusIn, member: dict = Dep
         upd["published_at"] = iso()
     await db.blog_posts.update_one({"id": post_id}, {"$set": upd})
     await audit(member, f"blog.{body.status}", post_id, {"note": body.note})
+    author = await db.users.find_one({"user_id": p["author_id"]}, NOFIELDS)
+    if author and author["user_id"] != member["user_id"] and body.status in ("published", "rejected"):
+        if body.status == "published":
+            notify(author["email"], "Your FlexoCards blog post is live", "Your post is published",
+                   [f"Good news! “{p['title']}” is now live on the FlexoCards blog."], ("Read your post", f"/blog/{p['slug']}"), "blog")
+        else:
+            notify(author["email"], "Update on your FlexoCards blog post", "Changes needed",
+                   [f"An admin reviewed “{p['title']}” and sent it back to you.", f"Note: {body.note or 'No note added.'}",
+                    "You can edit the post and submit it again."], ("Open my posts", "/write"), "blog")
     return {"ok": True}
 
 
@@ -1602,6 +1629,9 @@ async def admin_blog_add_author(body: AuthorIn, member: dict = Depends(require_p
         raise HTTPException(404, "No active FlexoCards account uses this email. Ask them to sign up first.")
     await db.users.update_one({"user_id": u["user_id"]}, {"$set": {"can_blog": True, "blog_granted_at": iso(), "blog_granted_by": member["user_id"]}})
     await audit(member, "blog.author_added", u["user_id"], {"email": u["email"]})
+    notify(u["email"], "You can now write for the FlexoCards blog", "You're a blog author",
+           ["An admin gave you access to write posts for the FlexoCards blog.", "Your posts are reviewed by an admin before they go live."],
+           ("Write a post", "/write/new"), "blog")
     return {"user_id": u["user_id"], "email": u["email"], "name": u.get("name")}
 
 
@@ -1612,6 +1642,121 @@ async def admin_blog_remove_author(user_id: str, member: dict = Depends(require_
         raise HTTPException(404, "Not an author")
     await audit(member, "blog.author_removed", user_id)
     return {"ok": True}
+
+
+# ---------- email + settings ----------
+def email_cfg() -> dict:
+    return settings_store.get("email")
+
+
+async def _deliver(to: str, subject: str, heading: str, paras: list, cta, kind: str, cfg: dict = None):
+    cfg = cfg or email_cfg()
+    log = {"id": new_id(), "to": to, "subject": subject, "kind": kind, "provider": cfg["provider"], "created_at": iso()}
+    try:
+        await send_email(cfg, to, subject, render(cfg, heading, paras, cta))
+        log["status"] = "sent"
+    except (EmailError, ValueError, httpx.HTTPError) as e:
+        log.update(status="failed", error=str(e)[:300])
+        logger.warning("email %s to %s failed: %s", kind, to, e)
+    await db.email_log.insert_one(log)
+    log.pop("_id", None)
+    return log
+
+
+def notify(to: str, subject: str, heading: str, paras: list, cta=None, kind: str = "notice"):
+    asyncio.create_task(_deliver(to, subject, heading, paras, cta, kind))
+
+
+def _rzp_view() -> dict:
+    c = settings_store.get("razorpay")
+    saved = settings_store.saved_keys("razorpay")
+    return {"key_id": c["key_id"], "key_secret_hint": settings_store.hint(c["key_secret"]), "webhook_secret_hint": settings_store.hint(c["webhook_secret"]),
+            "source": "admin" if "key_id" in saved else "server", "mode": "test" if c["key_id"].startswith("rzp_test_") else "live" if c["key_id"] else "not_configured",
+            "webhook_url": f"{(email_cfg()['site_url'] or '').rstrip('/')}/api/billing/webhook"}
+
+
+def _email_view() -> dict:
+    c = email_cfg()
+    return {**{k: v for k, v in c.items() if k != "smtp_pass"}, "smtp_pass_hint": settings_store.hint(c["smtp_pass"]),
+            "customized": bool(settings_store.saved_keys("email"))}
+
+
+@admin.get("/settings")
+async def admin_settings(member: dict = Depends(require_perm("settings.manage"))):
+    logs = await db.email_log.find({}, NOFIELDS).sort("created_at", -1).limit(15).to_list(15)
+    return {"razorpay": _rzp_view(), "email": _email_view(), "email_log": logs}
+
+
+class RzpSettingsIn(BaseModel):
+    key_id: str = Field(pattern=r"^rzp_(test|live)_[A-Za-z0-9]{6,40}$")
+    key_secret: str = Field(default="", max_length=100)
+    webhook_secret: str = Field(default="", max_length=200)
+
+
+@admin.put("/settings/razorpay")
+async def admin_set_razorpay(body: RzpSettingsIn, member: dict = Depends(require_perm("settings.manage"))):
+    secret = body.key_secret.strip() or settings_store.get("razorpay")["key_secret"]
+    if not secret:
+        raise HTTPException(400, "Enter the Key Secret.")
+    r = await asyncio.to_thread(requests.get, f"{RZP_API}/orders", params={"count": 1}, auth=(body.key_id.strip(), secret), timeout=15)
+    if r.status_code in (401, 403):
+        raise HTTPException(400, "Razorpay rejected these keys. Check the Key ID and Key Secret.")
+    if r.status_code >= 400:
+        raise HTTPException(400, "Couldn't reach Razorpay to check the keys. Try again.")
+    await settings_store.save(db, "razorpay", {"key_id": body.key_id.strip(), "key_secret": body.key_secret.strip() or None,
+                                               "webhook_secret": body.webhook_secret.strip() or None}, member["user_id"], iso())
+    await audit(member, "settings.razorpay_updated", "razorpay", {"key_id": body.key_id[:14] + "…", "webhook": bool(body.webhook_secret)})
+    return _rzp_view()
+
+
+class EmailSettingsIn(BaseModel):
+    provider: str = Field(pattern="^(emergent|smtp)$")
+    from_name: str = Field(min_length=2, max_length=60)
+    reply_to: str = Field(default="", max_length=200, pattern=r"^$|^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    site_url: str = Field(default="", max_length=200, pattern=r"^$|^https://[^\s/]+(/[^\s]*)?$")
+    smtp_host: str = Field(default="", max_length=200)
+    smtp_port: int = Field(default=465, ge=1, le=65535)
+    smtp_secure: str = Field(default="ssl", pattern="^(ssl|starttls|none)$")
+    smtp_user: str = Field(default="", max_length=200)
+    smtp_pass: str = Field(default="", max_length=300)
+    smtp_from_email: str = Field(default="", max_length=200, pattern=r"^$|^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    smtp_from_name: str = Field(default="", max_length=60)
+
+
+@admin.put("/settings/email")
+async def admin_set_email(body: EmailSettingsIn, member: dict = Depends(require_perm("settings.manage"))):
+    vals = body.model_dump()
+    vals["smtp_pass"] = vals["smtp_pass"] or None
+    if body.provider == "smtp":
+        merged = {**email_cfg(), **{k: v for k, v in vals.items() if v is not None}}
+        if not (merged["smtp_host"] and merged["smtp_user"] and merged["smtp_pass"]):
+            raise HTTPException(400, "To use SMTP, fill in host, username and password.")
+    await settings_store.save(db, "email", vals, member["user_id"], iso())
+    await audit(member, "settings.email_updated", "email", {"provider": body.provider, "smtp_host": body.smtp_host})
+    return _email_view()
+
+
+@admin.delete("/settings/{section}")
+async def admin_reset_settings(section: str, member: dict = Depends(require_perm("settings.manage"))):
+    if section not in ("razorpay", "email"):
+        raise HTTPException(404, "Unknown settings section")
+    await settings_store.reset(db, section)
+    await audit(member, f"settings.{section}_reset", section)
+    return {"razorpay": _rzp_view(), "email": _email_view()}
+
+
+@admin.post("/settings/email/test")
+async def admin_test_email(request: Request, member: dict = Depends(require_perm("settings.manage"))):
+    rate_limit(request, "email_test", 5)
+    if not member.get("email"):
+        raise HTTPException(400, "Your account has no email address.")
+    cfg = email_cfg()
+    log = await _deliver(member["email"], "FlexoCards test email", "Your email setup works",
+                         [f"This test was sent using {'your SMTP server (' + cfg['smtp_host'] + ')' if cfg['provider'] == 'smtp' else 'Emergent email'}.",
+                          "Payment receipts, admin invitations and blog notifications will be sent the same way."], ("Open admin panel", "/admin/settings"), "test", cfg)
+    if log["status"] != "sent":
+        raise HTTPException(400, f"Test email failed: {log.get('error', 'unknown error')}")
+    return {"ok": True, "to": member["email"], "provider": cfg["provider"]}
 
 
 app.include_router(api)

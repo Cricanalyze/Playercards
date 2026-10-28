@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, Link } from "react-router-dom";
 import { Show, UserButton } from "@clerk/react";
-import { BarChart3, Users, CreditCard, Package, Trophy, LayoutTemplate, ShieldCheck, ScrollText, Flag, ArrowLeft, Newspaper } from "lucide-react";
+import { BarChart3, Users, CreditCard, Package, Trophy, LayoutTemplate, ShieldCheck, ScrollText, Flag, ArrowLeft, Newspaper, Settings as SettingsIcon } from "lucide-react";
 import Blog from "./Blog";
+import SettingsPage from "./Settings";
 import { useApi, errMsg } from "@/lib/api";
 import { Logo } from "@/components/layout/Logo";
 import Overview from "./Overview";
@@ -29,6 +30,7 @@ const NAV = [
   ["audit", "Audit log", ScrollText, "audit.view", Audit],
   ["reports", "Reports", Flag, "moderation.manage", Reports],
   ["blog", "Blog", Newspaper, "blog.manage", Blog],
+  ["settings", "Settings", SettingsIcon, "settings.manage", SettingsPage],
 ];
 
 export const PageHead = ({ title, sub, children }) => (

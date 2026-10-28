@@ -17,12 +17,13 @@ PERMISSIONS = {
     "audit.view": "View audit logs",
     "admins.manage": "Invite admins & change roles",
     "blog.manage": "Publish blog posts & manage blog authors",
+    "settings.manage": "Change payment & email settings (Super Admin only)",
 }
 ALL_PERMS = list(PERMISSIONS)
 
 ROLE_DEFAULTS = {
     "super_admin": ALL_PERMS,
-    "admin": [p for p in ALL_PERMS if p != "admins.manage"],
+    "admin": [p for p in ALL_PERMS if p not in ("admins.manage", "settings.manage")],
     "user_manager": ["analytics.view", "users.view", "users.manage", "subscriptions.view"],
     "subscription_manager": ["analytics.view", "users.view", "subscriptions.view", "subscriptions.manage", "plans.manage"],
     "moderator": ["users.view", "moderation.manage"],
