@@ -20,7 +20,22 @@ export const blankData = (sport) => ({
   stats: {}, statKeys: (sport?.stats || []).slice(0, 6).map((s) => s.key), show: defaultShow(sport?.kind || "team"),
 });
 
-export const blankPhoto = { src: "", zoom: 1, x: 0, y: 0, cutout: "", useCutout: false, bg: { type: "none", value: "" } };
+export const blankPhoto = { src: "", zoom: 1, x: 0, y: 0, rotate: 0, brightness: 1, contrast: 1, saturate: 1, effect: "none", cutout: "", useCutout: false, bg: { type: "none", value: "" } };
+
+export const EFFECTS = {
+  none: "", vivid: "saturate(1.5) contrast(1.15)", noir: "grayscale(1) contrast(1.3)", vintage: "sepia(.55) contrast(1.05) brightness(1.05)",
+  glow: "brightness(1.12) drop-shadow(0 0 10px rgba(255,215,120,.85))", duotone: "grayscale(1) sepia(1) hue-rotate(190deg) saturate(3)", cold: "hue-rotate(-15deg) saturate(1.2) brightness(1.05)",
+};
+
+export const photoFilter = (p) =>
+  [`brightness(${p.brightness ?? 1})`, `contrast(${p.contrast ?? 1})`, `saturate(${p.saturate ?? 1})`, EFFECTS[p.effect] || ""].join(" ");
+
+const BG_FEATURE = { library: "bg_library", premium: "premium_backgrounds", team: "team_presets" };
+export const featuresUsed = (p) => [
+  p.bg?.custom && p.bg?.type === "image" ? "custom_backgrounds" : "",
+  BG_FEATURE[p.bg?.tier] && p.bg?.type !== "none" ? BG_FEATURE[p.bg.tier] : "",
+  p.effect && p.effect !== "none" ? "advanced_effects" : "",
+].filter(Boolean);
 
 export const BG_PRESETS = [
   { type: "gradient", value: "linear-gradient(160deg,#0F172A,#1E3A8A)", label: "Night blue" },

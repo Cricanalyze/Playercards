@@ -51,7 +51,8 @@ export default function Overview() {
             <Stat id="users-new" label="New users" value={m.users.new} />
             <Stat id="users-active" label="Active (30d)" value={m.users.active_30d} />
             <Stat id="users-free" label="Free users" value={m.users.free} />
-            <Stat id="users-premium" label="Premium users" value={m.users.premium} tone="text-amber-500" />
+            <Stat id="users-premium" label="Paid users" value={m.users.paid} tone="text-amber-500" />
+            <Stat id="users-comp" label="Complimentary users" value={m.users.complimentary} />
             <Stat id="users-suspended" label="Suspended" value={m.users.suspended} />
             <Stat id="subs-active" label="Active subscriptions" value={m.subscriptions.active} />
             <Stat id="subs-expired" label="Expired" value={m.subscriptions.expired} />
@@ -62,7 +63,7 @@ export default function Overview() {
           </div>
           <div className="rounded-xl border border-border p-5">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4"><p className="font-semibold">Payments</p>
-              <span className="text-[11px] uppercase tracking-wider px-2 py-1 rounded bg-muted text-muted-foreground" data-testid="payments-gateway-status">Gateway: not configured</span></div>
+              <span className="text-[11px] uppercase tracking-wider px-2 py-1 rounded bg-muted text-muted-foreground" data-testid="payments-gateway-status">Razorpay: {m.payments.gateway === "not_configured" ? "pending setup" : `${m.payments.gateway} mode`} · {m.payments.pending} pending · {m.payments.refunded} refunded</span></div>
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
               <Stat id="pay-success" label="Successful" value={m.payments.successful} />
               <Stat id="pay-failed" label="Failed" value={m.payments.failed} />

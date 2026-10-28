@@ -2,11 +2,12 @@ import { useAppData } from "@/context/AppData";
 import { PricingGrid } from "@/components/PricingGrid";
 
 const TERMS = [
-  ["One-time vs recurring", "Premium Card and Team Pack are one-time purchases with no auto-renewal. Pro Creator is a recurring subscription billed per period."],
-  ["Cancellation", "Cancel Pro Creator any time. You keep access until the end of the period you already paid for; it will not renew."],
-  ["Refunds", "One-time purchases can be refunded within 7 days if the premium design has not been exported. Subscription refunds follow applicable law and gateway rules."],
-  ["Price changes", "New prices apply to future purchases only. Existing subscriptions keep the terms they were bought on."],
-  ["Payments status", "Online payments are not live yet. No charge can be made today. Complimentary access may be granted by our team for testing and promotions."],
+  ["Monthly vs yearly", "Monthly gives 1 month of access; yearly gives 12 months for the price of 10. Plans don't auto-renew — renew or switch any time."],
+  ["Card credits", "Each PNG download or share uses 1 credit. Credits reset on the 1st of every month, including on yearly plans. Unused credits don't roll over."],
+  ["Changing plans", "Buying a different plan replaces your current paid plan straight away. Renewing the same plan adds time to your expiry date."],
+  ["Expiry", "When a plan expires you drop back to Free. Your saved cards are always kept."],
+  ["Refunds", "Refunds follow applicable law and Razorpay rules. A refunded payment ends the plan it paid for."],
+  ["Price changes", "New prices apply to future purchases only."],
 ];
 
 export default function Pricing() {

@@ -46,7 +46,7 @@ const Hero = () => (
           <Button asChild size="lg" variant="outline" className="rounded-full h-12 px-7 font-bold uppercase tracking-wide hover:bg-accent hover:text-foreground" data-testid="hero-explore-designs-button">
             <Link to="/explore">Explore Designs</Link></Button>
         </div>
-        <p className="mt-6 text-xs text-muted-foreground">No sign-up needed · Photos stay on your device · No official logos</p>
+        <p className="mt-6 text-xs text-muted-foreground">No sign-up needed to design · 2 free downloads a month · Photos stay on your device</p>
       </div>
       <div className="relative h-[460px] sm:h-[520px]" data-testid="hero-demo-cards">
         <DemoCard i={1} width={230} className="absolute left-0 sm:left-4 top-16 floaty" style={{ "--r": "-8deg", animationDelay: "-2s" }} />
@@ -69,7 +69,7 @@ const Templates = () => {
             <div className="card-tilt">{demo && <ScaledCard width={210} template={t} sport={demo.sport} data={demo.data} photo={demo.photo} />}</div>
             <div className="mt-3 flex items-center justify-between w-[210px]">
               <span className="font-display font-bold uppercase text-lg group-hover:text-amber-500 transition-colors">{t.name}</span>
-              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${t.tier === "premium" ? "bg-amber-500 text-slate-950" : "bg-muted text-muted-foreground"}`}>{t.tier}</span>
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${t.collection !== "free" ? "bg-amber-500 text-slate-950" : "bg-muted text-muted-foreground"}`}>{t.collection || t.tier}</span>
             </div>
           </Link>
         );
@@ -102,7 +102,7 @@ export default function Home() {
       <Section id="sports" eyebrow="Sports & games directory" title="Every sport. Every game." sub="Choose your sport to load the right stats — runs and wickets for cricket, raid points for kabaddi, ACS for Valorant.">
         <SportsGrid sports={sports} linkMode />
       </Section>
-      <Section id="templates" eyebrow="Featured templates" title="Eight original designs" sub="Each template has its own composition, typography and finish. Premium designs are marked.">
+      <Section id="templates" eyebrow="Featured templates" title="25 original designs" sub="Five collections — Free, Basic, Pro, Premium and Exclusive. Each design shows the plan it needs.">
         <Templates />
       </Section>
       <Section id="how" eyebrow="How it works" title="Card ready in under a minute">
@@ -126,7 +126,7 @@ export default function Home() {
           ))}
         </div>
       </Section>
-      <Section id="pricing" eyebrow="Pricing" title="Start free. Upgrade when you want." sub="Prices are in INR and come from our live plan settings. Online payments are not enabled yet.">
+      <Section id="pricing" eyebrow="Pricing" title="Start free. Upgrade when you want." sub="Prices are in INR and come from our live plan settings. Pay monthly or yearly through Razorpay.">
         <PricingGrid plans={plans} />
       </Section>
       <Section id="faq" eyebrow="FAQ" title="Questions, answered">

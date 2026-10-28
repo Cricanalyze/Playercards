@@ -1,5 +1,5 @@
 import { UserRound, Star, Crown, ShieldCheck } from "lucide-react";
-import { fitSize, toNum } from "@/lib/cardUtils";
+import { fitSize, toNum, photoFilter } from "@/lib/cardUtils";
 
 const H = "'Barlow Condensed', 'DM Sans', sans-serif";
 const M = "'JetBrains Mono', ui-monospace, monospace";
@@ -7,7 +7,7 @@ const abs = (s) => ({ position: "absolute", ...s });
 
 const PhotoBg = ({ bg }) => {
   if (!bg || bg.type === "none" || !bg.value) return null;
-  if (bg.type === "image") return <img src={bg.value} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />;
+  if (bg.type === "image") return <img src={bg.value} alt="" draggable={false} crossOrigin="anonymous" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />;
   return <div style={{ position: "absolute", inset: 0, background: bg.value }} />;
 };
 
@@ -15,11 +15,11 @@ export const Photo = ({ photo, style, tint = "#94A3B8" }) => {
   const cut = photo?.useCutout && photo?.cutout;
   return (
   <div style={abs({ overflow: "hidden", ...style })}>
-    {cut && <PhotoBg bg={photo.bg} />}
+    {photo?.src && <PhotoBg bg={photo.bg} />}
     {photo?.src ? (
       <img src={cut ? photo.cutout : photo.src} alt="" draggable={false} crossOrigin="anonymous"
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transformOrigin: "center",
-          transform: `translate(${photo.x}%, ${photo.y}%) scale(${photo.zoom})`, userSelect: "none", pointerEvents: "none" }} />
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transformOrigin: "center", filter: photoFilter(photo),
+          transform: `translate(${photo.x}%, ${photo.y}%) rotate(${photo.rotate || 0}deg) scale(${photo.zoom})`, userSelect: "none", pointerEvents: "none" }} />
     ) : (
       <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: tint, opacity: 0.35 }}>
         <UserRound style={{ width: "62%", height: "62%" }} strokeWidth={1.1} />

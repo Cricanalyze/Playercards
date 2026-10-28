@@ -1,4 +1,6 @@
 import hashlib
+import hmac
+import json
 import logging
 import os
 import secrets
@@ -10,10 +12,12 @@ from typing import List, Optional
 
 import requests
 from dotenv import load_dotenv
+from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, field_validator
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 from starlette.middleware.cors import CORSMiddleware
 
 ROOT_DIR = Path(__file__).parent
@@ -21,11 +25,13 @@ load_dotenv(ROOT_DIR / ".env")
 
 try:
     from backend.clerk_auth import clerk_router, require_user, _publishable_key, _secret_key
-    from backend.seed_data import SPORTS, TEMPLATES, PLANS, LAYOUTS
+    from backend.seed_data import SPORTS
+    from backend.seed_catalog import TEMPLATES, PLANS, LAYOUTS, BACKGROUNDS, BG_TIER_FEATURE, COLLECTIONS
     from backend.rbac import ROLES, RANK, PERMISSIONS, ROLE_DEFAULTS, STAFF_ROLES, RETIRED_ROLES, effective_role, effective_perms
 except ModuleNotFoundError:
     from clerk_auth import clerk_router, require_user, _publishable_key, _secret_key
-    from seed_data import SPORTS, TEMPLATES, PLANS, LAYOUTS
+    from seed_data import SPORTS
+    from seed_catalog import TEMPLATES, PLANS, LAYOUTS, BACKGROUNDS, BG_TIER_FEATURE, COLLECTIONS
     from rbac import ROLES, RANK, PERMISSIONS, ROLE_DEFAULTS, STAFF_ROLES, RETIRED_ROLES, effective_role, effective_perms
 
 client = AsyncIOMotorClient(os.environ["MONGO_URL"])
@@ -151,35 +157,83 @@ async def active_subs(user_id: str) -> list:
     return await db.subscriptions.find({"user_id": user_id, "status": {"$in": ACTIVE_STATES}}, NOFIELDS).to_list(100)
 
 
+def period_of(dt=None):
+    d = dt or now()
+    start = datetime(d.year, d.month, 1, tzinfo=timezone.utc)
+    return start.strftime("%Y-%m"), start + relativedelta(months=1)
+
+
 async def get_entitlements(member: Optional[dict]) -> dict:
-    free = await db.plans.find_one({"id": "free"}, NOFIELDS) or PLANS[0]
-    ent = {"plan_ids": ["free"], "all_premium_templates": False, "premium_templates": [], "remove_watermark": False,
-           "saved_cards": free["entitlements"]["saved_cards"], "team_cards": 0, "sources": []}
-    if not member:
-        return ent
-    for s in await active_subs(member["user_id"]):
-        e = s["plan_snapshot"]["entitlements"]
-        ent["plan_ids"].append(s["plan_id"])
-        ent["sources"].append({"plan": s["plan_snapshot"]["name"], "source": s["source"], "end_at": s.get("end_at")})
-        ent["all_premium_templates"] |= bool(e.get("all_premium_templates"))
-        ent["remove_watermark"] |= bool(e.get("remove_watermark"))
-        ent["saved_cards"] = max(ent["saved_cards"], e.get("saved_cards", 0))
-        ent["team_cards"] += e.get("team_cards", 0)
-        if s.get("template_id"):
-            ent["premium_templates"].append(s["template_id"])
-    return ent
+    plans = {p["id"]: p for p in await db.plans.find({}, NOFIELDS).to_list(100)}
+    plan, sub = plans.get("free") or PLANS[0], None
+    if member:
+        for s in await active_subs(member["user_id"]):
+            p = plans.get(s["plan_id"])
+            if p and p.get("active", True) and p["order"] >= plan["order"]:
+                plan, sub = p, s
+    period, reset_at = period_of()
+    used = (await db.usage.find_one({"user_id": member["user_id"], "period": period}, NOFIELDS) or {}) if member else {}
+    e = plan["entitlements"]
+    cards_used, bg_used = used.get("cards", 0), used.get("bg_removals", 0)
+    return {
+        "plan_id": plan["id"], "plan_name": plan["name"], "plan_ids": [plan["id"]],
+        "subscription": sub and {k: sub.get(k) for k in ("id", "status", "source", "cycle", "start_at", "end_at")},
+        "sources": [{"plan": plan["name"], "source": sub["source"], "end_at": sub.get("end_at")}] if sub else [],
+        "cards_per_month": plan["cards_per_month"], "cards_used": cards_used,
+        "cards_remaining": max(0, plan["cards_per_month"] - cards_used),
+        "bg_removal_limit": e.get("bg_removal_limit", 0) if e.get("bg_removal") else 0, "bg_removals_used": bg_used,
+        "bg_removals_remaining": max(0, (e.get("bg_removal_limit", 0) if e.get("bg_removal") else 0) - bg_used),
+        "period": period, "reset_at": iso(reset_at), "features": e,
+        "remove_watermark": bool(e.get("remove_watermark")), "saved_cards": e.get("saved_cards", 5),
+        "premium_templates": [],
+    }
 
 
 def can_use_template(tpl: dict, ent: dict) -> bool:
-    return tpl["tier"] == "free" or ent["all_premium_templates"] or tpl["id"] in ent["premium_templates"]
+    return not tpl.get("plans") or ent["plan_id"] in tpl["plans"]
+
+
+async def consume(member: dict, kind: str, request_id: str, limit: int, extra: dict) -> dict:
+    """Atomically use one credit; the same request_id never charges twice."""
+    period, _ = period_of()
+    key = f"{member['user_id']}:{kind}:{request_id}"
+    try:
+        await db.usage_events.insert_one({"key": key, "user_id": member["user_id"], "kind": kind, "period": period, "at": iso(), **extra})
+    except DuplicateKeyError:
+        return {"duplicate": True}
+    await db.usage.update_one({"user_id": member["user_id"], "period": period},
+                              {"$setOnInsert": {"cards": 0, "bg_removals": 0, "created_at": iso()}}, upsert=True)
+    r = await db.usage.find_one_and_update({"user_id": member["user_id"], "period": period, kind: {"$lt": limit}},
+                                           {"$inc": {kind: 1}, "$set": {"updated_at": iso()}})
+    if r is None:
+        await db.usage_events.delete_one({"key": key})
+        return {"denied": True}
+    return {"ok": True}
 
 
 # ---------- startup ----------
+async def migrate_catalog():
+    if await db.meta.find_one({"id": "subs_v2"}):
+        return
+    old = ["premium_card", "pro_creator", "team_pack"]
+    for pid in old:
+        if await db.subscriptions.count_documents({"plan_id": pid}):
+            await db.plans.update_one({"id": pid}, {"$set": {"active": False, "legacy": True, "order": 90}})
+        else:
+            await db.plans.delete_one({"id": pid})
+    for p in PLANS:
+        await db.plans.update_one({"id": p["id"]}, {"$set": p}, upsert=True)
+    for t in TEMPLATES:
+        await db.templates.update_one({"id": t["id"]}, {"$set": t}, upsert=True)
+    await db.meta.insert_one({"id": "subs_v2", "at": iso()})
+
+
 @app.on_event("startup")
 async def startup():
     for old, new in RETIRED_ROLES.items():
         await db.users.update_many({"role": old}, {"$set": {"role": new}})
-    for coll, items in (("sports", SPORTS), ("templates", TEMPLATES), ("plans", PLANS)):
+    await migrate_catalog()
+    for coll, items in (("sports", SPORTS), ("templates", TEMPLATES), ("plans", PLANS), ("backgrounds", BACKGROUNDS)):
         for it in items:
             await db[coll].update_one({"id": it["id"]}, {"$setOnInsert": it}, upsert=True)
     await db.users.create_index("user_id", unique=True)
@@ -189,6 +243,10 @@ async def startup():
     await db.audit_logs.create_index("at")
     await db.admin_invitations.create_index("token_hash", unique=True)
     await db.saved_cards.create_index("user_id")
+    await db.usage.create_index([("user_id", 1), ("period", 1)], unique=True)
+    await db.usage_events.create_index("key", unique=True)
+    await db.payments.create_index("order_id")
+    await db.webhook_events.create_index("event_id", unique=True)
 
 
 # ---------- public ----------
@@ -226,26 +284,255 @@ async def track_event(body: EventIn, request: Request):
     return {"ok": True}
 
 
+FEATURE_LABELS = {"custom_backgrounds": "Custom background uploads", "advanced_effects": "Advanced photo effects",
+                  "bg_library": "Background library", "premium_backgrounds": "Premium backgrounds", "team_presets": "Team background presets",
+                  "shared_branding": "Shared team branding"}
+
+
 class ExportIn(BaseModel):
     sport_id: str = Field(max_length=60)
     template_id: str = Field(max_length=60)
     format: str = Field(pattern="^(card|story)$")
+    request_id: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
+    features_used: List[str] = Field(default_factory=list, max_length=10)
+
+
+def upgrade_error(msg: str, need: str = ""):
+    raise HTTPException(402, {"message": msg, "upgrade": True, "need": need})
 
 
 @api.post("/cards/export")
 async def authorize_export(body: ExportIn, request: Request):
     rate_limit(request, "export", 40)
     member = await optional_member(request)
+    if not member:
+        raise HTTPException(401, "Sign in to download your card. Free accounts get 2 card downloads a month.")
     tpl = await db.templates.find_one({"id": body.template_id, "active": True}, NOFIELDS)
     if not tpl:
         raise HTTPException(404, "Template not found")
     ent = await get_entitlements(member)
     if not can_use_template(tpl, ent):
-        raise HTTPException(402, "This is a premium template. Upgrade or choose a free template to download.")
-    await db.events.insert_one({"id": new_id(), "type": "card_downloaded", "sport_id": body.sport_id,
-                                "template_id": body.template_id, "format": body.format,
-                                "user_id": member and member["user_id"], "at": iso()})
-    return {"allowed": True, "watermark": not ent["remove_watermark"]}
+        upgrade_error(f"{tpl['name']} is in the {tpl.get('collection', 'premium').title()} collection. Upgrade your plan or choose a template included in {ent['plan_name']}.", "template")
+    for f in body.features_used:
+        if f in FEATURE_LABELS and not ent["features"].get(f):
+            upgrade_error(f"{FEATURE_LABELS[f]} is not included in your {ent['plan_name']} plan. Remove it or upgrade.", f)
+    r = await consume(member, "cards", body.request_id, ent["cards_per_month"],
+                      {"template_id": body.template_id, "sport_id": body.sport_id, "format": body.format})
+    if r.get("denied"):
+        upgrade_error(f"You've used all {ent['cards_per_month']} card downloads in your {ent['plan_name']} plan this month. "
+                      f"Credits reset on {period_of()[1].strftime('%d %b %Y')}, or upgrade for more.", "credits")
+    if r.get("ok"):
+        await db.events.insert_one({"id": new_id(), "type": "card_downloaded", "sport_id": body.sport_id,
+                                    "template_id": body.template_id, "format": body.format, "user_id": member["user_id"], "at": iso()})
+    ent = await get_entitlements(member)
+    return {"allowed": True, "watermark": not ent["remove_watermark"], "cards_remaining": ent["cards_remaining"],
+            "duplicate": bool(r.get("duplicate"))}
+
+
+class ToolIn(BaseModel):
+    request_id: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
+
+
+@api.post("/tools/bg-removal")
+async def authorize_bg_removal(body: ToolIn, member: dict = Depends(current_member)):
+    ent = await get_entitlements(member)
+    if not ent["features"].get("bg_removal"):
+        upgrade_error(f"Background removal is not included in the {ent['plan_name']} plan. Upgrade to Basic or higher.", "bg_removal")
+    r = await consume(member, "bg_removals", body.request_id, ent["bg_removal_limit"], {})
+    if r.get("denied"):
+        upgrade_error(f"You've used all {ent['bg_removal_limit']} background removals this month.", "bg_limit")
+    ent = await get_entitlements(member)
+    return {"allowed": True, "remaining": ent["bg_removals_remaining"]}
+
+
+@api.get("/backgrounds")
+async def list_backgrounds(request: Request):
+    ent = await get_entitlements(await optional_member(request))
+    rows = await db.backgrounds.find({"active": True}, NOFIELDS).sort("order", 1).to_list(200)
+    out = []
+    for b in rows:
+        ok = bool(ent["features"].get(BG_TIER_FEATURE.get(b["tier"], ""), False))
+        preview = b["value"] if b["type"] == "gradient" else b["value"].split("?")[0] + "?auto=compress&w=120" if "pexels" in b["value"] else b["value"].replace("w=900", "w=120")
+        out.append({"id": b["id"], "name": b["name"], "tier": b["tier"], "type": b["type"], "locked": not ok,
+                    "preview": preview, "value": b["value"] if ok else ""})
+    return out
+
+
+class BrandIn(BaseModel):
+    team: str = Field(default="", max_length=40)
+    accent: str = Field(default="", pattern="^(#[0-9A-Fa-f]{6})?$")
+    background_id: str = Field(default="", max_length=60)
+
+
+@api.get("/me/brand")
+async def get_brand(member: dict = Depends(current_member)):
+    return (await db.users.find_one({"user_id": member["user_id"]}, {"_id": 0, "brand": 1}) or {}).get("brand") or {}
+
+
+@api.put("/me/brand")
+async def set_brand(body: BrandIn, member: dict = Depends(current_member)):
+    ent = await get_entitlements(member)
+    if not ent["features"].get("shared_branding"):
+        upgrade_error("Shared team branding is part of the Team plan.", "shared_branding")
+    await db.users.update_one({"user_id": member["user_id"]}, {"$set": {"brand": body.model_dump()}})
+    return body.model_dump()
+
+
+# ---------- billing (Razorpay) ----------
+RZP_API = "https://api.razorpay.com/v1"
+
+
+def rzp_keys():
+    return os.environ.get("RAZORPAY_KEY_ID", ""), os.environ.get("RAZORPAY_KEY_SECRET", "")
+
+
+def rzp(method: str, path: str, **kw):
+    kid, sec = rzp_keys()
+    r = requests.request(method, RZP_API + path, auth=(kid, sec), timeout=15, **kw)
+    if r.status_code >= 400:
+        logger.warning("razorpay %s %s -> %s %s", method, path, r.status_code, r.text[:300])
+        raise HTTPException(502, "Payment gateway error. Please try again.")
+    return r.json()
+
+
+@api.get("/billing/config")
+async def billing_config():
+    kid, sec = rzp_keys()
+    return {"enabled": bool(kid and sec), "key_id": kid if kid and sec else "", "webhooks": bool(os.environ.get("RAZORPAY_WEBHOOK_SECRET")),
+            "mode": "test" if kid.startswith("rzp_test_") else "live" if kid else "not_configured"}
+
+
+class CheckoutIn(BaseModel):
+    plan_id: str = Field(max_length=60)
+    cycle: str = Field(pattern="^(month|year)$")
+
+
+@api.post("/billing/checkout")
+async def checkout(body: CheckoutIn, request: Request, member: dict = Depends(current_member)):
+    rate_limit(request, "checkout", 10)
+    kid, sec = rzp_keys()
+    if not (kid and sec):
+        raise HTTPException(503, "Online payments are pending setup. Please try again later.")
+    plan = await db.plans.find_one({"id": body.plan_id, "active": True}, NOFIELDS)
+    if not plan or plan["type"] == "free":
+        raise HTTPException(400, "Choose an available paid plan.")
+    amount = plan["price_month"] if body.cycle == "month" else plan["price_year"]
+    if amount < 1:
+        raise HTTPException(400, "This plan has no price set.")
+    pid = new_id()
+    order = rzp("POST", "/orders", json={"amount": int(round(amount * 100)), "currency": "INR", "receipt": pid[:40],
+                                         "notes": {"user_id": member["user_id"], "plan_id": plan["id"], "cycle": body.cycle}})
+    await db.payments.insert_one({"id": pid, "user_id": member["user_id"], "user_email": member.get("email"), "plan_id": plan["id"],
+                                  "plan_name": plan["name"], "cycle": body.cycle, "amount_inr": amount, "currency": "INR",
+                                  "gateway": "razorpay", "order_id": order["id"], "status": "created", "created_at": iso(),
+                                  "history": [{"at": iso(), "event": "order_created"}]})
+    return {"payment_id": pid, "order_id": order["id"], "amount": order["amount"], "currency": "INR", "key_id": kid,
+            "plan_name": plan["name"], "cycle": body.cycle, "email": member.get("email"), "name": member.get("name")}
+
+
+async def activate_payment(pay: dict, rzp_payment_id: str, via: str):
+    r = await db.payments.find_one_and_update(
+        {"id": pay["id"], "status": {"$in": ["created", "authorized", "failed"]}},
+        {"$set": {"status": "captured", "razorpay_payment_id": rzp_payment_id, "paid_at": iso()},
+         "$push": {"history": {"at": iso(), "event": "captured", "via": via}}}, return_document=ReturnDocument.AFTER)
+    if not r:
+        return
+    plan = await db.plans.find_one({"id": pay["plan_id"]}, NOFIELDS)
+    delta = relativedelta(months=1) if pay["cycle"] == "month" else relativedelta(years=1)
+    snap = {"name": plan["name"], "type": plan["type"], "price_inr": pay["amount_inr"], "interval": pay["cycle"],
+            "cards_per_month": plan["cards_per_month"], "entitlements": plan["entitlements"]}
+    same = await db.subscriptions.find_one({"user_id": pay["user_id"], "plan_id": plan["id"], "source": "payment",
+                                            "status": {"$in": ACTIVE_STATES}}, NOFIELDS)
+    if same:
+        end = iso(max(now(), datetime.fromisoformat(same["end_at"])) + delta)
+        await db.subscriptions.update_one({"id": same["id"]}, {"$set": {"end_at": end, "cycle": pay["cycle"], "payment_id": pay["id"]},
+                                                               "$push": {"history": {"at": iso(), "event": "renewed", "payment": pay["id"]}}})
+        sub_id = same["id"]
+    else:
+        await db.subscriptions.update_many({"user_id": pay["user_id"], "source": "payment", "status": {"$in": ACTIVE_STATES}},
+                                           {"$set": {"status": "canceled", "end_at": iso()},
+                                            "$push": {"history": {"at": iso(), "event": "replaced_by_plan_change", "by": "system"}}})
+        sub_id = new_id()
+        await db.subscriptions.insert_one({"id": sub_id, "user_id": pay["user_id"], "plan_id": plan["id"], "plan_snapshot": snap,
+                                           "status": "active", "source": "payment", "cycle": pay["cycle"], "payment_id": pay["id"],
+                                           "start_at": iso(), "end_at": iso(now() + delta), "auto_renew": False, "created_at": iso(),
+                                           "history": [{"at": iso(), "event": "activated", "payment": pay["id"], "via": via}]})
+    await db.payments.update_one({"id": pay["id"]}, {"$set": {"subscription_id": sub_id}})
+
+
+class VerifyIn(BaseModel):
+    razorpay_order_id: str = Field(max_length=80)
+    razorpay_payment_id: str = Field(max_length=80)
+    razorpay_signature: str = Field(max_length=200)
+
+
+@api.post("/billing/verify")
+async def verify_payment(body: VerifyIn, member: dict = Depends(current_member)):
+    kid, sec = rzp_keys()
+    if not sec:
+        raise HTTPException(503, "Online payments are pending setup.")
+    pay = await db.payments.find_one({"order_id": body.razorpay_order_id, "user_id": member["user_id"]}, NOFIELDS)
+    if not pay:
+        raise HTTPException(404, "Payment not found")
+    expected = hmac.new(sec.encode(), f"{body.razorpay_order_id}|{body.razorpay_payment_id}".encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, body.razorpay_signature):
+        await db.payments.update_one({"id": pay["id"]}, {"$push": {"history": {"at": iso(), "event": "signature_mismatch"}}})
+        raise HTTPException(400, "Payment could not be verified.")
+    p = rzp("GET", f"/payments/{body.razorpay_payment_id}")
+    if p.get("order_id") != pay["order_id"] or int(p.get("amount", 0)) != int(round(pay["amount_inr"] * 100)):
+        raise HTTPException(400, "Payment details do not match this order.")
+    if p.get("status") == "captured":
+        await activate_payment(pay, p["id"], "checkout")
+    elif p.get("status") == "authorized":
+        await db.payments.update_one({"id": pay["id"], "status": "created"}, {"$set": {"status": "authorized", "razorpay_payment_id": p["id"]}})
+    elif p.get("status") == "failed":
+        await db.payments.update_one({"id": pay["id"], "status": {"$in": ["created", "authorized"]}}, {"$set": {"status": "failed"}})
+    final = await db.payments.find_one({"id": pay["id"]}, NOFIELDS)
+    return {"status": final["status"], "subscription_id": final.get("subscription_id")}
+
+
+@api.post("/billing/webhook")
+async def razorpay_webhook(request: Request):
+    secret = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
+    if not secret:
+        raise HTTPException(503, "Webhook secret not configured")
+    raw = await request.body()
+    sig = request.headers.get("x-razorpay-signature", "")
+    if not hmac.compare_digest(hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest(), sig):
+        raise HTTPException(400, "Invalid signature")
+    ev = json.loads(raw)
+    event_id = request.headers.get("x-razorpay-event-id") or hashlib.sha256(raw).hexdigest()
+    try:
+        await db.webhook_events.insert_one({"event_id": event_id, "event": ev.get("event"), "at": iso()})
+    except DuplicateKeyError:
+        return {"ok": True, "duplicate": True}
+    kind = ev.get("event", "")
+    ent = ev.get("payload", {})
+    payment = (ent.get("payment") or {}).get("entity") or {}
+    refund = (ent.get("refund") or {}).get("entity") or {}
+    if kind.startswith("refund."):
+        pay = await db.payments.find_one({"razorpay_payment_id": refund.get("payment_id")}, NOFIELDS)
+        if pay and kind in ("refund.processed", "refund.created"):
+            await db.payments.update_one({"id": pay["id"]}, {"$set": {"status": "refunded", "refunded_at": iso(), "refund_amount_inr": refund.get("amount", 0) / 100},
+                                                             "$push": {"history": {"at": iso(), "event": kind}}})
+            if pay.get("subscription_id"):
+                await db.subscriptions.update_one({"id": pay["subscription_id"]}, {"$set": {"status": "refunded", "end_at": iso()},
+                                                                                   "$push": {"history": {"at": iso(), "event": "refunded", "by": "gateway"}}})
+        return {"ok": True}
+    pay = await db.payments.find_one({"order_id": payment.get("order_id")}, NOFIELDS) if payment.get("order_id") else None
+    if not pay:
+        return {"ok": True, "ignored": True}
+    if int(payment.get("amount", 0)) != int(round(pay["amount_inr"] * 100)):
+        return {"ok": True, "ignored": "amount_mismatch"}
+    if kind in ("payment.captured", "order.paid"):
+        await activate_payment(pay, payment["id"], "webhook")
+    elif kind == "payment.authorized":
+        await db.payments.update_one({"id": pay["id"], "status": "created"}, {"$set": {"status": "authorized", "razorpay_payment_id": payment["id"]}})
+    elif kind == "payment.failed":
+        await db.payments.update_one({"id": pay["id"], "status": {"$in": ["created", "authorized"]}},
+                                     {"$set": {"status": "failed", "failure_reason": payment.get("error_description", "")},
+                                      "$push": {"history": {"at": iso(), "event": "failed"}}})
+    return {"ok": True}
 
 
 class ReportIn(BaseModel):
@@ -269,7 +556,7 @@ async def me(member: dict = Depends(current_member)):
     subs = await db.subscriptions.find({"user_id": member["user_id"]}, NOFIELDS).sort("created_at", -1).to_list(100)
     return {"member": {k: member.get(k) for k in ("user_id", "email", "name", "role", "perms", "status", "created_at", "favorite_templates")},
             "entitlements": await get_entitlements(member), "subscriptions": subs,
-            "payments": await db.payments.find({"user_id": member["user_id"]}, NOFIELDS).to_list(100)}
+            "payments": await db.payments.find({"user_id": member["user_id"]}, {"_id": 0, "history": 0}).sort("created_at", -1).to_list(100)}
 
 
 class FavIn(BaseModel):
@@ -419,28 +706,31 @@ async def metrics(frm: Optional[str] = None, to: Optional[str] = None, member: d
     at = {"at": rng} if rng else {}
     users_q = {**IN_ENV, "status": {"$ne": "deleted"}}
     premium_ids = await db.subscriptions.distinct("user_id", {"status": {"$in": ACTIVE_STATES}})
+    paid_ids = await db.subscriptions.distinct("user_id", {"status": {"$in": ACTIVE_STATES}, "source": "payment"})
     total = await db.users.count_documents(users_q)
     premium = await db.users.count_documents({**users_q, "user_id": {"$in": premium_ids}})
+    paid = await db.users.count_documents({**users_q, "user_id": {"$in": paid_ids}})
     active_since = iso(now() - timedelta(days=30))
     pay = lambda st: {"status": st, **({"created_at": rng} if rng else {})}
     gross = await db.payments.aggregate([{"$match": pay("captured")}, {"$group": {"_id": None, "s": {"$sum": "$amount_inr"}}}]).to_list(1)
     refunds = await db.payments.aggregate([{"$match": pay("refunded")}, {"$group": {"_id": None, "s": {"$sum": "$amount_inr"}}}]).to_list(1)
-    paid_recurring = await db.subscriptions.find({"status": {"$in": ["active", "past_due"]}, "source": "payment",
-                                                  "plan_snapshot.type": "subscription"}, NOFIELDS).to_list(10000)
+    paid_recurring = await db.subscriptions.find({"status": {"$in": ["active", "past_due"]}, "source": "payment"}, NOFIELDS).to_list(10000)
     mrr = sum(s["plan_snapshot"]["price_inr"] / (12 if s["plan_snapshot"].get("interval") == "year" else 1) for s in paid_recurring)
     g, r = (gross[0]["s"] if gross else 0), (refunds[0]["s"] if refunds else 0)
     sub_count = lambda st: db.subscriptions.count_documents({"status": st})
     return {
         "users": {"total": total, "new": await db.users.count_documents({**users_q, **({"created_at": rng} if rng else {"created_at": {"$gte": active_since}})}),
                   "active_30d": await db.users.count_documents({**users_q, "last_seen_at": {"$gte": active_since}}),
-                  "free": total - premium, "premium": premium,
+                  "free": total - premium, "premium": premium, "paid": paid, "complimentary": premium - paid,
                   "suspended": await db.users.count_documents({**IN_ENV, "status": "suspended"})},
         "subscriptions": {"active": await db.subscriptions.count_documents({"status": {"$in": ACTIVE_STATES}}),
                           "expired": await sub_count("expired"), "canceled": await sub_count("canceled"),
                           "by_source": {s: await db.subscriptions.count_documents({"status": {"$in": ACTIVE_STATES}, "source": s})
                                         for s in ("payment", "promotion", "complimentary")}},
         "payments": {"successful": await db.payments.count_documents(pay("captured")), "failed": await db.payments.count_documents(pay("failed")),
-                     "gross_inr": g, "refunds_inr": r, "net_inr": g - r, "mrr_inr": round(mrr, 2), "gateway": "not_configured"},
+                     "gross_inr": g, "refunds_inr": r, "net_inr": g - r, "mrr_inr": round(mrr, 2),
+                     "gateway": (await billing_config())["mode"], "pending": await db.payments.count_documents(pay({"$in": ["created", "authorized"]})),
+                     "refunded": await db.payments.count_documents(pay("refunded"))},
         "cards": {"created": await db.events.count_documents({"type": "card_created", **at}),
                   "downloaded": await db.events.count_documents({"type": "card_downloaded", **at})},
         "popular_sports": await _top({"type": "card_created", **at}, "sport_id"),
@@ -497,6 +787,8 @@ async def admin_user_detail(user_id: str, member: dict = Depends(require_perm("u
     subs = await db.subscriptions.find({"user_id": user_id}, NOFIELDS).sort("created_at", -1).to_list(100)
     return {"user": t, "subscriptions": subs, "payments": await db.payments.find({"user_id": user_id}, NOFIELDS).to_list(100),
             "saved_cards": await db.saved_cards.count_documents({"user_id": user_id}),
+            "cards": await db.saved_cards.find({"user_id": user_id}, {"_id": 0, "id": 1, "title": 1, "sport_id": 1, "template_id": 1, "updated_at": 1}).sort("updated_at", -1).to_list(50),
+            "usage_history": await db.usage.find({"user_id": user_id}, NOFIELDS).sort("period", -1).to_list(12),
             "entitlements": await get_entitlements(t)}
 
 
@@ -610,9 +902,21 @@ class GrantIn(BaseModel):
     user_id: str
     plan_id: str
     days: Optional[int] = Field(default=None, ge=1, le=3650)
-    template_id: Optional[str] = None
-    source: str = Field(default="complimentary", pattern="^(complimentary|promotion)$")
+    start_at: Optional[str] = None
+    end_at: Optional[str] = None
+    cycle: str = Field(default="month", pattern="^(month|year)$")
+    source: str = Field(default="complimentary", pattern="^(complimentary|promotion|manual)$")
     note: str = Field(default="", max_length=300)
+
+
+def parse_dt(v: Optional[str]):
+    if not v:
+        return None
+    try:
+        d = datetime.fromisoformat(v if "T" in v else v + "T00:00:00+00:00")
+    except ValueError:
+        raise HTTPException(400, "Use a valid date (YYYY-MM-DD).")
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
 
 @admin.post("/subscriptions")
@@ -622,20 +926,68 @@ async def admin_grant(body: GrantIn, member: dict = Depends(require_perm("subscr
         raise HTTPException(409, "Account is deleted.")
     plan = await db.plans.find_one({"id": body.plan_id}, NOFIELDS)
     if not plan or plan["type"] == "free":
-        raise HTTPException(400, "Choose a paid plan to grant.")
-    if plan["entitlements"].get("premium_template_choices"):
-        if body.template_id not in plan.get("eligible_templates", []):
-            raise HTTPException(400, "Pick one of this plan's eligible premium templates.")
-    days = body.days or plan.get("default_days")
-    sub = {"id": new_id(), "user_id": body.user_id, "plan_id": plan["id"], "template_id": body.template_id if plan["entitlements"].get("premium_template_choices") else None,
-           "plan_snapshot": {k: plan[k] for k in ("name", "type", "price_inr", "interval", "entitlements")},
-           "status": "active", "source": body.source, "granted_by": member["user_id"], "note": body.note,
-           "start_at": iso(), "end_at": iso(now() + timedelta(days=days)) if days else None, "auto_renew": False,
-           "created_at": iso(), "history": [{"at": iso(), "event": f"granted_{body.source}", "by": member["user_id"], "days": days}]}
+        raise HTTPException(400, "Choose a paid plan to assign.")
+    start = parse_dt(body.start_at) or now()
+    end = parse_dt(body.end_at) or (start + timedelta(days=body.days) if body.days else
+                                    start + (relativedelta(years=1) if body.cycle == "year" else relativedelta(months=1)))
+    if end <= start:
+        raise HTTPException(400, "Expiry must be after the start date.")
+    await db.subscriptions.update_many({"user_id": body.user_id, "status": {"$in": ACTIVE_STATES}, "source": {"$ne": "payment"}},
+                                       {"$set": {"status": "canceled", "end_at": iso()},
+                                        "$push": {"history": {"at": iso(), "event": "replaced_by_admin_assignment", "by": member["user_id"]}}})
+    sub = {"id": new_id(), "user_id": body.user_id, "plan_id": plan["id"], "template_id": None,
+           "plan_snapshot": {"name": plan["name"], "type": plan["type"], "price_inr": 0, "interval": body.cycle,
+                             "cards_per_month": plan["cards_per_month"], "entitlements": plan["entitlements"]},
+           "status": "active" if start <= now() else "pending", "source": body.source, "cycle": body.cycle, "granted_by": member["user_id"], "note": body.note,
+           "start_at": iso(start), "end_at": iso(end), "auto_renew": False,
+           "created_at": iso(), "history": [{"at": iso(), "event": f"granted_{body.source}", "by": member["user_id"], "end_at": iso(end)}]}
     await db.subscriptions.insert_one(sub)
     sub.pop("_id", None)
-    await audit(member, "subscription.granted", body.user_id, {"plan": plan["id"], "days": days, "source": body.source, "subscription": sub["id"]})
+    await audit(member, "subscription.granted", body.user_id, {"plan": plan["id"], "source": body.source, "start_at": sub["start_at"], "end_at": sub["end_at"], "subscription": sub["id"]})
     return sub
+
+
+class DatesIn(BaseModel):
+    start_at: str
+    end_at: str
+    note: str = Field(default="", max_length=300)
+
+
+@admin.patch("/subscriptions/{sub_id}/dates")
+async def admin_sub_dates(sub_id: str, body: DatesIn, member: dict = Depends(require_perm("subscriptions.manage"))):
+    s = await _sub(sub_id)
+    start, end = parse_dt(body.start_at), parse_dt(body.end_at)
+    if end <= start:
+        raise HTTPException(400, "Expiry must be after the start date.")
+    status = s["status"]
+    if status in ("expired", "pending", "active") and s["status"] not in ("refunded", "canceled"):
+        status = "pending" if start > now() else "expired" if end < now() else "active"
+    await db.subscriptions.update_one({"id": sub_id}, {"$set": {"start_at": iso(start), "end_at": iso(end), "status": status},
+                                                       "$push": {"history": {"at": iso(), "event": "dates_changed", "by": member["user_id"], "note": body.note}}})
+    await audit(member, "subscription.dates_changed", s["user_id"], {"subscription": sub_id, "from": [s.get("start_at"), s.get("end_at")], "to": [iso(start), iso(end)]})
+    return {"ok": True, "status": status}
+
+
+@admin.get("/subscription-report")
+async def admin_sub_report(member: dict = Depends(require_perm("subscriptions.view"))):
+    await expire_sweep()
+    active = await db.subscriptions.find({"status": {"$in": ACTIVE_STATES}}, NOFIELDS).to_list(10000)
+    by_plan = {}
+    for x in active:
+        k = (x["plan_id"], x.get("cycle") or "month", x["source"])
+        by_plan[k] = by_plan.get(k, 0) + 1
+    months = await db.payments.aggregate([
+        {"$match": {"status": {"$in": ["captured", "refunded"]}}},
+        {"$group": {"_id": {"m": {"$substr": ["$created_at", 0, 7]}, "cycle": "$cycle", "status": "$status"},
+                    "count": {"$sum": 1}, "amount": {"$sum": "$amount_inr"}}}, {"$sort": {"_id.m": -1}}]).to_list(500)
+    users_q = {**IN_ENV, "status": {"$ne": "deleted"}}
+    paid_ids = await db.subscriptions.distinct("user_id", {"status": {"$in": ACTIVE_STATES}, "source": "payment"})
+    any_ids = await db.subscriptions.distinct("user_id", {"status": {"$in": ACTIVE_STATES}})
+    total = await db.users.count_documents(users_q)
+    return {"active": [{"plan_id": k[0], "cycle": k[1], "source": k[2], "count": v} for k, v in sorted(by_plan.items())],
+            "monthly": [{"month": r["_id"]["m"], "cycle": r["_id"].get("cycle"), "status": r["_id"]["status"], "count": r["count"], "amount_inr": r["amount"]} for r in months],
+            "users": {"total": total, "paid": await db.users.count_documents({**users_q, "user_id": {"$in": paid_ids}}),
+                      "free": total - await db.users.count_documents({**users_q, "user_id": {"$in": any_ids}})}}
 
 
 class SubAction(BaseModel):
@@ -681,46 +1033,45 @@ async def admin_cancel(sub_id: str, body: SubAction, member: dict = Depends(requ
 
 
 @admin.get("/payments")
-async def admin_payments(member: dict = Depends(require_perm("subscriptions.view"))):
-    return await db.payments.find({}, NOFIELDS).sort("created_at", -1).to_list(500)
+async def admin_payments(status: str = "", member: dict = Depends(require_perm("subscriptions.view"))):
+    f = {"status": status} if status in ("created", "authorized", "captured", "failed", "refunded") else {}
+    return await db.payments.find(f, NOFIELDS).sort("created_at", -1).to_list(500)
 
 
 # ---------- admin: plans ----------
+ENT_BOOLS = ["remove_watermark", "photo_editing", "standard_backgrounds", "bg_removal", "bg_library", "custom_backgrounds",
+             "premium_backgrounds", "advanced_effects", "team_presets", "shared_branding"]
+
+
 class PlanIn(BaseModel):
     name: str = Field(min_length=2, max_length=60)
-    type: str = Field(pattern="^(one_time|subscription|team)$")
-    price_inr: float = Field(ge=0, le=100000)
-    interval: str = Field(pattern="^(none|month|year)$")
-    default_days: Optional[int] = Field(default=None, ge=1, le=3650)
-    trial_days: int = Field(default=0, ge=0, le=90)
+    price_month: float = Field(ge=0, le=100000)
+    price_year: float = Field(ge=0, le=1000000)
+    cards_per_month: int = Field(ge=0, le=100000)
     description: str = Field(default="", max_length=300)
     features: List[str] = Field(default_factory=list, max_length=12)
     terms: str = Field(default="", max_length=500)
     entitlements: dict
-    eligible_templates: List[str] = Field(default_factory=list)
     active: bool = True
-    order: int = 10
+    order: int = Field(default=10, ge=0, le=100)
 
     @field_validator("entitlements")
     @classmethod
     def ent(cls, v):
-        return {"all_premium_templates": bool(v.get("all_premium_templates")), "premium_template_choices": int(v.get("premium_template_choices", 0)),
-                "remove_watermark": bool(v.get("remove_watermark")), "saved_cards": max(0, min(10000, int(v.get("saved_cards", 5)))),
-                "team_cards": max(0, min(1000, int(v.get("team_cards", 0))))}
+        out = {k: bool(v.get(k)) for k in ENT_BOOLS}
+        out["photo_editing"] = out["standard_backgrounds"] = True
+        out["saved_cards"] = max(0, min(10000, int(v.get("saved_cards", 5))))
+        out["bg_removal_limit"] = max(0, min(10000, int(v.get("bg_removal_limit", 0))))
+        return out
 
 
 @admin.get("/plans")
 async def admin_plans(member: dict = Depends(require_perm("subscriptions.view"))):
-    return await db.plans.find({}, NOFIELDS).sort("order", 1).to_list(100)
-
-
-@admin.post("/plans")
-async def admin_plan_create(body: PlanIn, member: dict = Depends(require_perm("plans.manage"))):
-    doc = {"id": "plan_" + secrets.token_hex(4), **body.model_dump()}
-    await db.plans.insert_one(doc)
-    doc.pop("_id", None)
-    await audit(member, "plan.created", doc["id"], {"name": body.name, "price_inr": body.price_inr})
-    return doc
+    plans = await db.plans.find({}, NOFIELDS).sort("order", 1).to_list(100)
+    for p in plans:
+        p["subscribers"] = await db.subscriptions.count_documents({"plan_id": p["id"], "status": {"$in": ACTIVE_STATES}})
+        p["template_count"] = await db.templates.count_documents({"$or": [{"plans": p["id"]}, {"plans": []}]})
+    return plans
 
 
 @admin.put("/plans/{plan_id}")
@@ -730,10 +1081,26 @@ async def admin_plan_update(plan_id: str, body: PlanIn, member: dict = Depends(r
         raise HTTPException(404, "Not found")
     data = body.model_dump()
     if plan_id == "free":
-        data.update(type="free", price_inr=0, interval="none", active=True)
+        data.update(price_month=0, price_year=0, active=True)
+    data["price_inr"] = data["price_month"]
     await db.plans.update_one({"id": plan_id}, {"$set": data})
-    await audit(member, "plan.updated", plan_id, {"price_from": old["price_inr"], "price_to": data["price_inr"], "active": data["active"],
-                                                  "note": "Existing subscriptions keep their plan snapshot."})
+    await audit(member, "plan.updated", plan_id, {"from": {k: old.get(k) for k in ("price_month", "price_year", "cards_per_month", "active")},
+                                                  "to": {k: data[k] for k in ("price_month", "price_year", "cards_per_month", "active")},
+                                                  "entitlements": data["entitlements"]})
+    return {"ok": True}
+
+
+class TemplateAccessIn(BaseModel):
+    template_ids: List[str] = Field(max_length=500)
+
+
+@admin.put("/plans/{plan_id}/templates")
+async def admin_plan_templates(plan_id: str, body: TemplateAccessIn, member: dict = Depends(require_perm("plans.manage"))):
+    if not await db.plans.find_one({"id": plan_id}):
+        raise HTTPException(404, "Not found")
+    await db.templates.update_many({"id": {"$in": body.template_ids}, "plans": {"$ne": plan_id}}, {"$push": {"plans": plan_id}})
+    await db.templates.update_many({"id": {"$nin": body.template_ids}}, {"$pull": {"plans": plan_id}})
+    await audit(member, "plan.template_access", plan_id, {"templates": len(body.template_ids)})
     return {"ok": True}
 
 
@@ -785,11 +1152,13 @@ class TemplateIn(BaseModel):
     name: str = Field(min_length=2, max_length=50)
     badge: str = Field(min_length=1, max_length=14)
     layout: str
-    tier: str = Field(pattern="^(free|premium)$")
+    collection: str
     description: str = Field(default="", max_length=200)
     accent: str = Field(pattern="^#[0-9A-Fa-f]{6}$")
     sports: List[str] = Field(default_factory=list)
+    plans: List[str] = Field(default_factory=list)
     recommended: List[str] = Field(default_factory=list)
+    frame_image: str = Field(default="", max_length=2_000_000)
     watermark_free: bool = True
     active: bool = True
     order: int = 100
@@ -801,6 +1170,28 @@ class TemplateIn(BaseModel):
             raise ValueError("Unknown layout")
         return v
 
+    @field_validator("collection")
+    @classmethod
+    def coll_ok(cls, v):
+        if v not in COLLECTIONS:
+            raise ValueError("Unknown collection")
+        return v
+
+    @field_validator("frame_image")
+    @classmethod
+    def frame_ok(cls, v):
+        if v and not v.startswith(("data:image/png;base64,", "data:image/webp;base64,")):
+            raise ValueError("Frame overlay must be a PNG or WebP image")
+        return v
+
+
+async def _tpl_doc(body: TemplateIn) -> dict:
+    d = body.model_dump()
+    valid = {p["id"] for p in await db.plans.find({}, {"_id": 0, "id": 1}).to_list(100)}
+    d["plans"] = [p for p in d["plans"] if p in valid]
+    d["tier"] = d["collection"]
+    return d
+
 
 @admin.get("/templates")
 async def admin_templates(member: dict = Depends(require_perm("templates.manage"))):
@@ -809,19 +1200,31 @@ async def admin_templates(member: dict = Depends(require_perm("templates.manage"
 
 @admin.post("/templates")
 async def admin_template_create(body: TemplateIn, member: dict = Depends(require_perm("templates.manage"))):
-    doc = {"id": "tpl_" + secrets.token_hex(4), **body.model_dump()}
+    doc = {"id": "tpl_" + secrets.token_hex(4), **(await _tpl_doc(body))}
     await db.templates.insert_one(doc)
     doc.pop("_id", None)
-    await audit(member, "template.created", doc["id"], {"name": body.name, "tier": body.tier})
+    await audit(member, "template.created", doc["id"], {"name": body.name, "collection": body.collection})
     return doc
 
 
 @admin.put("/templates/{tpl_id}")
 async def admin_template_update(tpl_id: str, body: TemplateIn, member: dict = Depends(require_perm("templates.manage"))):
-    r = await db.templates.update_one({"id": tpl_id}, {"$set": body.model_dump()})
+    r = await db.templates.update_one({"id": tpl_id}, {"$set": await _tpl_doc(body)})
     if not r.matched_count:
         raise HTTPException(404, "Not found")
-    await audit(member, "template.updated", tpl_id, {"tier": body.tier, "active": body.active})
+    await audit(member, "template.updated", tpl_id, {"collection": body.collection, "active": body.active, "plans": body.plans})
+    return {"ok": True}
+
+
+@admin.delete("/templates/{tpl_id}")
+async def admin_template_delete(tpl_id: str, member: dict = Depends(require_perm("templates.manage"))):
+    t = await db.templates.find_one({"id": tpl_id}, NOFIELDS)
+    if not t:
+        raise HTTPException(404, "Not found")
+    if await db.templates.count_documents({"active": True, "id": {"$ne": tpl_id}, "plans": "free"}) == 0:
+        raise HTTPException(409, "Keep at least one published Free template.")
+    await db.templates.delete_one({"id": tpl_id})
+    await audit(member, "template.deleted", tpl_id, {"name": t["name"]})
     return {"ok": True}
 
 

@@ -1,18 +1,23 @@
-import { useRef, useState } from "react";
-import { Lock, Upload, Trash2, RefreshCw, ZoomIn, Check, Wand2, Loader2, ImageIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Lock, Check } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { SportsGrid } from "@/components/SportsGrid";
 import { ScaledCard } from "@/components/card/PlayerCard";
-import { ACCENTS, MAX_MB, processPhoto, blankPhoto, BG_PRESETS } from "@/lib/cardUtils";
-import { removeBackground } from "@/lib/bgRemoval";
+import { ACCENTS } from "@/lib/cardUtils";
+import { useApi, errMsg } from "@/lib/api";
+export { PhotoPanel } from "./PhotoPanel";
 
-export const canUse = (t, ent) => t.tier === "free" || ent?.all_premium_templates || ent?.premium_templates?.includes(t.id);
+export const canUse = (t, ent) => !t.plans?.length || t.plans.includes(ent?.plan_id || "free");
+export const PLAN_NAMES = { free: "Free", basic: "Basic", pro: "Pro", team: "Team" };
+export const needPlan = (t) => ["free", "basic", "pro", "team"].find((p) => !t.plans?.length || t.plans.includes(p));
+export const CollectionBadge = ({ t }) => (
+  <span className={`text-[9px] font-bold uppercase px-1.5 rounded ${t.collection === "free" ? "bg-muted text-muted-foreground" : "bg-amber-500 text-slate-950"}`}>{t.collection || t.tier}</span>
+);
 
 export const SportPanel = ({ sports, sport, onPick }) => <SportsGrid sports={sports} selectedId={sport?.id} onSelect={onPick} compact />;
 
@@ -32,97 +37,13 @@ export const TemplatePanel = ({ templates, state, sport, ent, onPick }) => {
             </div>
             <div className="mt-2 flex items-center justify-between gap-1">
               <span className="font-display font-bold uppercase text-sm truncate">{t.name}</span>
-              {t.tier === "premium" && <span className="text-[9px] font-bold uppercase bg-amber-500 text-slate-950 px-1.5 rounded">Pro</span>}
+              <CollectionBadge t={t} />
             </div>
+            {locked && <span className="text-[10px] text-amber-500 uppercase tracking-wide block" data-testid={`template-needs-${t.id}`}>Needs {PLAN_NAMES[needPlan(t)] || "upgrade"}</span>}
             {t.recommended?.includes(sport?.category) && <span className="text-[10px] text-cyan-500 uppercase tracking-wide">Great for {sport.name}</span>}
           </button>
         );
       })}
-    </div>
-  );
-};
-
-export const PhotoPanel = ({ photo, setPhoto }) => {
-  const input = useRef(null);
-  const onFile = async (e) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-    try { setPhoto({ ...blankPhoto, src: await processPhoto(f) }); toast.success("Photo added. Drag the card preview to reposition."); }
-    catch (err) { toast.error(err.message); }
-  };
-  const set = (k) => (v) => setPhoto({ ...photo, [k]: v[0] }, false);
-  return (
-    <div className="space-y-5">
-      <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={onFile} data-testid="photo-file-input" />
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={() => input.current.click()} className="rounded-full font-bold hover:bg-amber-400 hover:text-slate-950" data-testid="photo-upload-button">
-          {photo.src ? <><RefreshCw className="w-4 h-4 mr-1" /> Replace photo</> : <><Upload className="w-4 h-4 mr-1" /> Upload photo</>}</Button>
-        {photo.src && <Button variant="outline" className="rounded-full" onClick={() => setPhoto(blankPhoto)} data-testid="photo-remove-button"><Trash2 className="w-4 h-4 mr-1" /> Remove</Button>}
-        {photo.src && <Button variant="ghost" className="rounded-full" onClick={() => setPhoto({ ...photo, zoom: 1, x: 0, y: 0 })} data-testid="photo-reset-position-button">Reset position</Button>}
-      </div>
-      <p className="text-xs text-muted-foreground">JPG, PNG or WebP up to {MAX_MB} MB. Your photo is processed on this device only and is never uploaded. Only use photos you have permission to use.</p>
-      {photo.src && (
-        <div className="space-y-4">
-          {[["zoom", "Zoom", 1, 3, 0.02], ["x", "Left / right", -50, 50, 0.5], ["y", "Up / down", -50, 50, 0.5]].map(([k, l, min, max, step]) => (
-            <div key={k} className="space-y-2">
-              <Label className="flex items-center gap-2 text-xs uppercase tracking-wider">{k === "zoom" && <ZoomIn className="w-3 h-3" />}{l}</Label>
-              <Slider data-testid={`photo-${k}-slider`} min={min} max={max} step={step} value={[photo[k]]} onValueChange={set(k)} />
-            </div>
-          ))}
-          <p className="text-xs text-muted-foreground">Tip: drag directly on the card preview to move the photo.</p>
-        </div>
-      )}
-      {photo.src && <BackgroundSection photo={photo} setPhoto={setPhoto} />}
-    </div>
-  );
-};
-
-const BackgroundSection = ({ photo, setPhoto }) => {
-  const [busy, setBusy] = useState(false);
-  const bgInput = useRef(null);
-  const run = async () => {
-    setBusy(true);
-    try { setPhoto({ ...photo, cutout: await removeBackground(photo.src), useCutout: true }); toast.success("Background removed. Pick a new background below."); }
-    catch { toast.error("Background removal didn't work on this device. Try a clearer photo or another browser."); }
-    finally { setBusy(false); }
-  };
-  const setBg = (bg) => setPhoto({ ...photo, bg });
-  const onBgFile = async (e) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-    try { setBg({ type: "image", value: await processPhoto(f) }); } catch (err) { toast.error(err.message); }
-  };
-  const isOn = (b) => photo.bg?.type === b.type && photo.bg?.value === b.value;
-  const sw = "w-10 h-10 rounded-lg border-2 transition-transform hover:scale-110";
-  return (
-    <div className="space-y-4 border-t border-border pt-5" data-testid="background-section">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="font-semibold text-sm flex items-center gap-2"><Wand2 className="w-4 h-4 text-amber-500" />Background</p>
-          <p className="text-xs text-muted-foreground">Removal runs on your device — the photo is never uploaded. First use downloads a ~16 MB free AI model once.</p>
-        </div>
-        {photo.cutout
-          ? <label className="flex items-center gap-2 text-sm shrink-0">Cutout<Switch data-testid="bg-cutout-switch" checked={photo.useCutout} onCheckedChange={(v) => setPhoto({ ...photo, useCutout: v })} /></label>
-          : <Button onClick={run} disabled={busy} variant="outline" className="rounded-full shrink-0" data-testid="bg-remove-button">{busy ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Removing…</> : "Remove background"}</Button>}
-      </div>
-      {photo.cutout && photo.useCutout && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <button data-testid="bg-option-none" onClick={() => setBg({ type: "none", value: "" })} className={`${sw} text-[9px] font-bold uppercase ${photo.bg?.type === "none" ? "border-amber-500" : "border-border"}`}>Card</button>
-            {BG_PRESETS.map((b, i) => <button key={b.label} data-testid={`bg-preset-${i}`} aria-label={b.label} title={b.label} onClick={() => setBg(b)} className={`${sw} ${isOn(b) ? "border-amber-500" : "border-transparent"}`} style={{ background: b.value }} />)}
-            {ACCENTS.slice(0, 5).map((c) => <button key={c} data-testid={`bg-color-${c.slice(1)}`} aria-label={`Solid ${c}`} onClick={() => setBg({ type: "color", value: c })} className={`${sw} ${isOn({ type: "color", value: c }) ? "border-amber-500" : "border-transparent"}`} style={{ background: c }} />)}
-            <input type="color" data-testid="bg-custom-color-input" aria-label="Custom background colour" value={photo.bg?.type === "color" ? photo.bg.value : "#1A2234"} onChange={(e) => setBg({ type: "color", value: e.target.value })} className="w-10 h-10 rounded-lg bg-transparent cursor-pointer" />
-          </div>
-          <input ref={bgInput} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={onBgFile} data-testid="bg-image-file-input" />
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" className="rounded-full" onClick={() => bgInput.current.click()} data-testid="bg-upload-image-button"><ImageIcon className="w-4 h-4 mr-1" />Upload background image</Button>
-            <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setPhoto({ ...photo, cutout: "", useCutout: false, bg: { type: "none", value: "" } })} data-testid="bg-restore-original-button">Restore original</Button>
-          </div>
-          <p className="text-xs text-muted-foreground">Only use background images you have rights to (no official logos or stadium photos you don't own).</p>
-        </div>
-      )}
     </div>
   );
 };
@@ -182,8 +103,28 @@ export const StatsPanel = ({ sport, d, setData }) => {
 
 const SHOW = [["nickname", "Nickname"], ["team", "Team"], ["jersey", "Jersey"], ["position", "Position"], ["country", "Country"], ["season", "Season"], ["rating", "Rating"], ["achievements", "Achievements"], ["tagline", "Tagline"], ["social", "Social handle"], ["stats", "Stats"]];
 
-export const StylePanel = ({ d, template, setData, onReset }) => (
+const TeamBranding = ({ d, setData, ent }) => {
+  const api = useApi();
+  const [brand, setBrand] = useState(null);
+  const ok = !!ent?.features?.shared_branding;
+  useEffect(() => { if (ok) api("get", "/me/brand").then(setBrand).catch(() => {}); }, [ok, api]);
+  const save = async () => { try { setBrand(await api("put", "/me/brand", { team: d.team || "", accent: d.accent || "" })); toast.success("Team branding saved for your squad cards"); } catch (e) { toast.error(errMsg(e)); } };
+  return (
+    <div className="rounded-xl border border-border p-4 space-y-2" data-testid="team-branding-section">
+      <p className="font-semibold text-sm flex items-center gap-2">Shared team branding {!ok && <><Lock className="w-3 h-3" /><span className="text-[10px] font-bold uppercase bg-amber-500 text-slate-950 px-1.5 rounded">Team</span></>}</p>
+      {ok ? (
+        <div className="flex flex-wrap gap-2 items-center">
+          <Button size="sm" variant="outline" className="rounded-full" onClick={save} data-testid="brand-save-button">Save current team & accent</Button>
+          {(brand?.team || brand?.accent) && <Button size="sm" className="rounded-full" onClick={() => setData({ team: brand.team, accent: brand.accent, show: { ...d.show, team: true } })} data-testid="brand-apply-button">Apply {brand.team || "brand"}</Button>}
+        </div>
+      ) : <p className="text-xs text-muted-foreground">Save your squad's team name and colour once and apply it to every player card. Included in the Team plan.</p>}
+    </div>
+  );
+};
+
+export const StylePanel = ({ d, template, setData, onReset, ent }) => (
   <div className="space-y-6">
+    <TeamBranding d={d} setData={setData} ent={ent} />
     <div>
       <Label className="text-xs uppercase tracking-wider text-muted-foreground">Accent colour</Label>
       <div className="flex flex-wrap gap-2 mt-2">

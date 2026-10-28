@@ -14,7 +14,7 @@ export const FAQS = [
   ["Can I post directly to WhatsApp or Instagram?", "We don't post for you. On supported phones the Share button opens your phone's share menu with the image. Otherwise download the PNG and add it to your Status or Story manually."],
   ["Are the statistics verified?", "No. All stats, ratings and achievements are entered by you and shown as self-reported. Please be honest."],
   ["Can I use someone else's photo?", "Only if you have their permission (and a parent's permission for anyone under 18). Don't use team logos or photos you don't have rights to."],
-  ["How do premium plans work?", "Premium templates need an active entitlement. Online payments are launching soon; until then the team can grant complimentary access for testing and promotions."],
+  ["How do plans and credits work?", "Free gives 2 card downloads a month; Basic 5, Pro 15 and Team 40. Each download or share uses 1 credit and credits reset on the 1st of every month. Pay monthly or yearly securely through Razorpay (UPI, cards, netbanking)."],
 ];
 
 export const FaqList = () => (

@@ -31,32 +31,34 @@ export function PermPicker({ role, value, onChange, meta }) {
 
 function Grant({ userId, onDone }) {
   const api = useApi();
-  const { plans, templates } = useAppData();
-  const [g, setG] = useState({ plan_id: "pro_creator", days: "30", template_id: "", source: "complimentary", note: "" });
-  const plan = plans.find((p) => p.id === g.plan_id);
+  const { plans } = useAppData();
+  const today = new Date().toISOString().slice(0, 10);
+  const [g, setG] = useState({ plan_id: "pro", cycle: "month", start_at: today, end_at: "", source: "complimentary", note: "" });
   const submit = async () => {
-    try { await api("post", "/admin/subscriptions", { ...g, user_id: userId, days: g.days ? Number(g.days) : null, template_id: g.template_id || null }); toast.success("Access granted"); onDone(); }
+    try { await api("post", "/admin/subscriptions", { ...g, user_id: userId, end_at: g.end_at || null }); toast.success("Plan assigned"); onDone(); }
     catch (e) { toast.error(errMsg(e)); }
   };
   return (
     <div className="grid sm:grid-cols-2 gap-2">
-      <Select value={g.plan_id} onValueChange={(v) => setG({ ...g, plan_id: v, days: String(plans.find((p) => p.id === v)?.default_days || "") })}>
+      <Select value={g.plan_id} onValueChange={(v) => setG({ ...g, plan_id: v })}>
         <SelectTrigger data-testid="grant-plan-select"><SelectValue /></SelectTrigger>
         <SelectContent>{plans.filter((p) => p.type !== "free").map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
       </Select>
       <Select value={g.source} onValueChange={(v) => setG({ ...g, source: v })}>
         <SelectTrigger data-testid="grant-source-select"><SelectValue /></SelectTrigger>
-        <SelectContent><SelectItem value="complimentary">Complimentary</SelectItem><SelectItem value="promotion">Promotion</SelectItem></SelectContent>
+        <SelectContent><SelectItem value="complimentary">Complimentary</SelectItem><SelectItem value="promotion">Promotion</SelectItem><SelectItem value="manual">Manual (paid offline)</SelectItem></SelectContent>
       </Select>
-      {plan?.entitlements?.premium_template_choices > 0 && (
-        <Select value={g.template_id} onValueChange={(v) => setG({ ...g, template_id: v })}>
-          <SelectTrigger data-testid="grant-template-select"><SelectValue placeholder="Premium template" /></SelectTrigger>
-          <SelectContent>{plan.eligible_templates.map((t) => <SelectItem key={t} value={t}>{templates.find((x) => x.id === t)?.name || t}</SelectItem>)}</SelectContent>
-        </Select>
-      )}
-      <Input type="number" min={1} placeholder="Days (blank = no expiry)" value={g.days} onChange={(e) => setG({ ...g, days: e.target.value })} data-testid="grant-days-input" />
+      <Select value={g.cycle} onValueChange={(v) => setG({ ...g, cycle: v })}>
+        <SelectTrigger data-testid="grant-cycle-select"><SelectValue /></SelectTrigger>
+        <SelectContent><SelectItem value="month">1 month</SelectItem><SelectItem value="year">12 months</SelectItem></SelectContent>
+      </Select>
+      <div className="grid grid-cols-2 gap-2">
+        <Input type="date" value={g.start_at} onChange={(e) => setG({ ...g, start_at: e.target.value })} data-testid="grant-start-input" aria-label="Start date" />
+        <Input type="date" value={g.end_at} onChange={(e) => setG({ ...g, end_at: e.target.value })} data-testid="grant-end-input" aria-label="Expiry date (optional)" />
+      </div>
       <Input placeholder="Internal note" value={g.note} onChange={(e) => setG({ ...g, note: e.target.value })} data-testid="grant-note-input" />
-      <Button onClick={submit} data-testid="grant-submit-button">Grant access</Button>
+      <Button onClick={submit} data-testid="grant-submit-button">Assign plan</Button>
+      <p className="text-[11px] text-muted-foreground sm:col-span-2">Leave expiry empty to use the period above. Assigning replaces the user's other non-paid access.</p>
     </div>
   );
 }
@@ -85,8 +87,12 @@ export default function UserDialog({ userId, onClose }) {
               <RoleBadge role={u.role} /><Badge variant={u.status === "active" ? "secondary" : "destructive"} className="uppercase" data-testid="user-status-badge">{u.status}</Badge>
               <span className="text-muted-foreground">Joined {fmtDate(u.created_at)} · Last active {fmtDateTime(u.last_seen_at)} · {d.saved_cards} saved cards</span>
             </div>
-            <Box title="Entitlements">
-              <p className="text-sm" data-testid="user-entitlements">Premium: <b>{d.entitlements.all_premium_templates ? "All templates" : d.entitlements.premium_templates.join(", ") || "None"}</b> · Watermark: <b>{d.entitlements.remove_watermark ? "Off" : "On"}</b> · Saved limit: <b>{d.entitlements.saved_cards}</b></p>
+            <Box title="Plan & usage">
+              <p className="text-sm" data-testid="user-entitlements">Plan: <b>{d.entitlements.plan_name}</b>{d.entitlements.subscription && <> · expires {fmtDate(d.entitlements.subscription.end_at)}</>} · Cards this month: <b data-testid="user-card-usage">{d.entitlements.cards_used} / {d.entitlements.cards_per_month}</b> · Bg removals: <b>{d.entitlements.bg_removals_used} / {d.entitlements.bg_removal_limit}</b> · Resets {fmtDate(d.entitlements.reset_at)}</p>
+              {d.usage_history.length > 0 && <p className="text-xs text-muted-foreground">History: {d.usage_history.map((u) => `${u.period}: ${u.cards} cards, ${u.bg_removals} removals`).join(" · ")}</p>}
+            </Box>
+            <Box title={`Saved cards (${d.saved_cards})`}>
+              {d.cards.length === 0 ? <p className="text-sm text-muted-foreground">None</p> : <div className="grid sm:grid-cols-2 gap-1" data-testid="user-saved-cards">{d.cards.map((c) => <p key={c.id} className="text-xs truncate">{c.title || "Untitled"} · {c.sport_id} · {c.template_id} · {fmtDate(c.updated_at)}</p>)}</div>}
             </Box>
             <Box title="Subscriptions">
               {d.subscriptions.length === 0 && <p className="text-sm text-muted-foreground">None</p>}
@@ -97,9 +103,9 @@ export default function UserDialog({ userId, onClose }) {
                   {can("subscriptions.manage") && <SubActions sub={s} onDone={load} />}
                 </div>
               ))}
-              {can("subscriptions.manage") && u.status !== "deleted" && <><p className="text-xs text-muted-foreground pt-1">Grant complimentary / promotional access</p><Grant userId={userId} onDone={load} /></>}
+              {can("subscriptions.manage") && u.status !== "deleted" && <><p className="text-xs text-muted-foreground pt-1">Assign a plan / complimentary access</p><Grant userId={userId} onDone={load} /></>}
             </Box>
-            <Box title="Payments">{d.payments.length === 0 ? <p className="text-sm text-muted-foreground">No payments (gateway not configured).</p> : d.payments.map((p) => <p key={p.id} className="text-sm">{p.id} · {p.status}</p>)}</Box>
+            <Box title="Payments">{d.payments.length === 0 ? <p className="text-sm text-muted-foreground">No payments.</p> : d.payments.map((p) => <p key={p.id} className="text-sm" data-testid={`user-payment-${p.id}`}>{fmtDate(p.created_at)} · {p.plan_name} · ₹{p.amount_inr} · <b className="uppercase">{p.status}</b></p>)}</Box>
             {can("users.manage") && u.status !== "deleted" && (
               <Box title="Account security">
                 <div className="flex flex-wrap gap-2">

@@ -7,7 +7,9 @@ import { Download, Share2, Loader2, Save, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PlayerCard, StoryCard } from "@/components/card/PlayerCard";
-import { useApi, errMsg } from "@/lib/api";
+import { useApi, errMsg, newRequestId } from "@/lib/api";
+import { featuresUsed } from "@/lib/cardUtils";
+import { useAppData } from "@/context/AppData";
 
 const slug = (s) => (s || "player").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "player";
 const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -24,6 +26,7 @@ function download(url, name) {
 
 export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, onChooseTemplate, onNewCard }) {
   const api = useApi();
+  const { refreshMe } = useAppData();
   const cardRef = useRef(null);
   const storyRef = useRef(null);
   const created = useRef(false);
@@ -33,7 +36,8 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
   const [premium, setPremium] = useState("");
 
   const render = async (format) => {
-    const res = await api("post", "/cards/export", { sport_id: sport.id, template_id: template.id, format });
+    const res = await api("post", "/cards/export", { sport_id: sport.id, template_id: template.id, format, request_id: newRequestId(), features_used: featuresUsed(state.photo) });
+    refreshMe();
     flushSync(() => setWm(res.watermark));
     await document.fonts.ready;
     const node = format === "story" ? storyRef.current : cardRef.current;
@@ -50,6 +54,8 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
 
   const run = async (format, mode) => {
     if (!sport || !template) return;
+    if (!isSignedIn) return setPremium("Sign in to download or share. Free accounts get 2 card downloads every month — no payment needed.");
+    if (busy) return;
     setBusy(`${mode}-${format}`);
     try {
       const r = await render(format);
@@ -125,12 +131,14 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
       <Dialog open={!!premium} onOpenChange={(o) => !o && setPremium("")}>
         <DialogContent className="max-w-sm" data-testid="premium-required-dialog">
           <DialogHeader>
-            <DialogTitle className="font-display uppercase text-2xl">Premium design</DialogTitle>
-            <DialogDescription>{premium}</DialogDescription>
+            <DialogTitle className="font-display uppercase text-2xl">{isSignedIn ? "Upgrade needed" : "Sign in to download"}</DialogTitle>
+            <DialogDescription data-testid="upgrade-dialog-message">{premium}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
-            <Button asChild className="rounded-full font-bold" data-testid="premium-view-plans-button"><Link to="/pricing">View plans</Link></Button>
-            <Button variant="outline" className="rounded-full" data-testid="premium-choose-free-button" onClick={() => { setPremium(""); onChooseTemplate(); }}>Choose a free template</Button>
+            {isSignedIn
+              ? <Button asChild className="rounded-full font-bold" data-testid="premium-view-plans-button"><Link to="/pricing">View plans</Link></Button>
+              : <Button asChild className="rounded-full font-bold" data-testid="upgrade-sign-in-button"><Link to="/sign-in">Sign in or create account</Link></Button>}
+            <Button variant="outline" className="rounded-full" data-testid="premium-choose-free-button" onClick={() => { setPremium(""); onChooseTemplate(); }}>Choose another template</Button>
           </div>
         </DialogContent>
       </Dialog>

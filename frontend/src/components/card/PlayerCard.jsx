@@ -11,6 +11,7 @@ export const PlayerCard = forwardRef(({ template, sport, data, photo, watermark 
   return (
     <div ref={ref} style={{ position: "relative", width: CARD_W, height: CARD_H, fontFamily: "'DM Sans', sans-serif" }}>
       <Layout d={data} sport={sport} photo={photo} a={a} stats={statsOf(sport, data)} wm={watermark} />
+      {template?.frame_image && <img src={template.frame_image} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />}
     </div>
   );
 });

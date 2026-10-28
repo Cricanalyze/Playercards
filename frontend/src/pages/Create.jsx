@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Undo2, Lock } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppData } from "@/context/AppData";
-import { useApi, errMsg } from "@/lib/api";
+import { useApi, errMsg, fmtDate } from "@/lib/api";
 import { ScaledCard, useWidth } from "@/components/card/PlayerCard";
 import { blankData, blankPhoto, defaultShow } from "@/lib/cardUtils";
 import { SportPanel, TemplatePanel, PhotoPanel, DetailsPanel, StatsPanel, StylePanel, canUse } from "@/components/editor/Panels";
@@ -23,6 +23,18 @@ function useCardState() {
   const undo = () => { const p = hist.current.pop(); if (p) setState(p); setCanUndo(hist.current.length > 0); };
   return { state, update, undo, canUndo };
 }
+
+const Credits = ({ ent, isSignedIn }) => {
+  if (!isSignedIn) return <p className="text-xs text-center text-muted-foreground" data-testid="editor-credits">Sign in to download — Free plan includes 2 cards a month.</p>;
+  if (!ent) return null;
+  const low = ent.cards_remaining === 0;
+  return (
+    <div className={`text-xs text-center rounded-full border px-3 py-1.5 ${low ? "border-destructive/50 text-destructive" : "border-border text-muted-foreground"}`} data-testid="editor-credits">
+      <b className="text-foreground">{ent.plan_name}</b> · {ent.cards_remaining} of {ent.cards_per_month} card credits left · resets {fmtDate(ent.reset_at)}
+      {low && <Link to="/pricing" className="ml-2 text-amber-500 font-semibold hover:underline" data-testid="editor-upgrade-link">Upgrade</Link>}
+    </div>
+  );
+};
 
 function Preview({ state, sport, template, format, setFormat, onDrag, locked }) {
   const [ref, w] = useWidth(format === "story" ? 300 : 340);
@@ -45,7 +57,7 @@ function Preview({ state, sport, template, format, setFormat, onDrag, locked }) 
         <div data-testid="live-card-preview" onPointerDown={down} onPointerMove={move} onPointerUp={() => (drag.current = null)} onPointerCancel={() => (drag.current = null)}
           className={`relative touch-none drop-shadow-[0_20px_40px_rgba(0,0,0,.45)] ${state.photo.src ? "cursor-grab active:cursor-grabbing" : ""}`}>
           <ScaledCard width={w} format={format} template={template} sport={sport} data={state.data} photo={state.photo} watermark={false} />
-          {locked && <span className="absolute -top-3 right-3 inline-flex items-center gap-1 bg-amber-500 text-slate-950 text-[10px] font-bold uppercase px-2 py-1 rounded-full" data-testid="preview-premium-badge"><Lock className="w-3 h-3" />Premium</span>}
+          {locked && <span className="absolute -top-3 right-3 inline-flex items-center gap-1 bg-amber-500 text-slate-950 text-[10px] font-bold uppercase px-2 py-1 rounded-full" data-testid="preview-premium-badge"><Lock className="w-3 h-3" />{template.collection}</span>}
         </div>
       </div>
     </div>
@@ -122,7 +134,8 @@ export default function Create() {
         <div className="lg:sticky lg:top-24 rounded-3xl border border-border bg-card/50 stage-grid p-5 space-y-5">
           <Preview state={state} sport={sport} template={template} format={format} setFormat={setFormat} locked={locked} onDrag={(p) => p ? update((s) => ({ photo: { ...s.photo, ...p } }), false) : update((s) => ({ photo: s.photo }))} />
           <ExportBar state={state} sport={sport} template={template} isSignedIn={isSignedIn} onSave={save} saving={saving} onChooseTemplate={() => setTab("design")} onNewCard={newCard} />
-          <p className="text-[11px] text-center text-muted-foreground">Free exports include a small watermark. Stats are self-reported.</p>
+          <Credits ent={ent} isSignedIn={isSignedIn} />
+          <p className="text-[11px] text-center text-muted-foreground">Each PNG download or share uses 1 card credit. Free exports include a small watermark. Stats are self-reported.</p>
         </div>
         <Tabs value={tab} onValueChange={setTab} className="min-w-0">
           <TabsList className="w-full justify-start overflow-x-auto h-auto p-1 rounded-full [scrollbar-width:none]">
@@ -131,10 +144,10 @@ export default function Create() {
           <div className="mt-6 rounded-2xl border border-border bg-card p-4 sm:p-6">
             <TabsContent value="sport" className="mt-0"><SportPanel sports={sports} sport={sport} onPick={(s) => { pickSport(s); setTab("design"); }} /></TabsContent>
             <TabsContent value="design" className="mt-0"><TemplatePanel templates={templates} state={state} sport={sport} ent={ent} onPick={(id) => update({ templateId: id })} /></TabsContent>
-            <TabsContent value="photo" className="mt-0"><PhotoPanel photo={state.photo} setPhoto={setPhoto} /></TabsContent>
+            <TabsContent value="photo" className="mt-0"><PhotoPanel photo={state.photo} setPhoto={setPhoto} ent={ent} /></TabsContent>
             <TabsContent value="details" className="mt-0"><DetailsPanel sport={sport} d={state.data} setData={setData} /></TabsContent>
             <TabsContent value="stats" className="mt-0"><StatsPanel sport={sport} d={state.data} setData={setData} /></TabsContent>
-            <TabsContent value="style" className="mt-0"><StylePanel d={state.data} template={template} setData={setData} onReset={() => update({ data: blankData(sport), photo: blankPhoto })} /></TabsContent>
+            <TabsContent value="style" className="mt-0"><StylePanel d={state.data} template={template} setData={setData} ent={ent} onReset={() => update({ data: blankData(sport), photo: blankPhoto })} /></TabsContent>
           </div>
         </Tabs>
       </div>

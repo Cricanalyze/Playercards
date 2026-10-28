@@ -35,14 +35,20 @@ function Inner() {
 
       <div className="grid md:grid-cols-3 gap-4">
         <div className="rounded-2xl border border-amber-500/40 bg-amber-500/5 p-6 md:col-span-1" data-testid="dashboard-plan-card">
-          <p className="eyebrow">Current access</p>
-          <p className="font-display font-black uppercase text-3xl mt-2 flex items-center gap-2">{ent.sources.length ? <><Crown className="w-6 h-6 text-amber-500" />{ent.sources.map((s) => s.plan).join(" + ")}</> : "Free"}</p>
+          <p className="eyebrow">Current plan</p>
+          <p className="font-display font-black uppercase text-3xl mt-2 flex items-center gap-2" data-testid="dashboard-plan-name">{ent.plan_id !== "free" && <Crown className="w-6 h-6 text-amber-500" />}{ent.plan_name}</p>
+          {ent.subscription && <p className="text-xs text-muted-foreground" data-testid="dashboard-plan-expiry">{ent.subscription.cycle === "year" ? "Yearly" : "Monthly"} · {ent.subscription.source === "payment" ? "paid" : ent.subscription.source} · expires {fmtDate(ent.subscription.end_at)}</p>}
+          <div className="mt-4">
+            <div className="flex justify-between text-sm"><span>Card credits</span><b data-testid="dashboard-credits">{ent.cards_remaining} / {ent.cards_per_month} left</b></div>
+            <div className="h-2 bg-muted rounded-full mt-1"><div className="h-2 bg-amber-500 rounded-full" style={{ width: `${ent.cards_per_month ? (ent.cards_remaining / ent.cards_per_month) * 100 : 0}%` }} /></div>
+            <p className="text-xs text-muted-foreground mt-1" data-testid="dashboard-reset-date">Resets {fmtDate(ent.reset_at)}</p>
+          </div>
           <ul className="text-sm text-muted-foreground mt-3 space-y-1">
-            <li>Premium templates: <b className="text-foreground">{ent.all_premium_templates ? "All" : ent.premium_templates.length ? ent.premium_templates.join(", ") : "None"}</b></li>
+            <li>Background removals: <b className="text-foreground">{ent.bg_removal_limit ? `${ent.bg_removals_remaining} / ${ent.bg_removal_limit} left` : "Not included"}</b></li>
             <li>Watermark: <b className="text-foreground">{ent.remove_watermark ? "Removed" : "On"}</b></li>
             <li>Saved cards limit: <b className="text-foreground">{ent.saved_cards}</b></li>
-            {ent.team_cards > 0 && <li>Team cards: <b className="text-foreground">{ent.team_cards}</b></li>}
           </ul>
+          <Button asChild size="sm" className="mt-4 rounded-full font-bold" data-testid="dashboard-upgrade-button"><Link to="/pricing">{ent.plan_id === "free" ? "Upgrade plan" : "Change or renew plan"}</Link></Button>
         </div>
         <div className="rounded-2xl border border-border p-6 md:col-span-2">
           <p className="eyebrow">Subscription history</p>
@@ -59,8 +65,8 @@ function Inner() {
             </div>
           )}
           <p className="eyebrow mt-6">Billing history</p>
-          {payments.length === 0 ? <p className="text-sm text-muted-foreground mt-2">No payments. Online payments are not enabled yet.</p>
-            : payments.map((p) => <p key={p.id} className="text-sm">{fmtDate(p.created_at)} · {inr(p.amount_inr)} · {p.status}</p>)}
+          {payments.length === 0 ? <p className="text-sm text-muted-foreground mt-2">No payments yet.</p>
+            : payments.map((p) => <p key={p.id} className="text-sm" data-testid={`my-payment-${p.id}`}>{fmtDate(p.created_at)} · {p.plan_name} ({p.cycle === "year" ? "yearly" : "monthly"}) · {inr(p.amount_inr)} · <b className="uppercase">{{ created: "pending", authorized: "pending", captured: "paid" }[p.status] || p.status}</b></p>)}
         </div>
       </div>
 
