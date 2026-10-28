@@ -481,10 +481,12 @@ async def activate_payment(pay: dict, rzp_payment_id: str, via: str):
     await db.payments.update_one({"id": pay["id"]}, {"$set": {"subscription_id": sub_id}})
     if pay.get("user_email"):
         end = (await db.subscriptions.find_one({"id": sub_id}, NOFIELDS))["end_at"][:10]
-        notify(pay["user_email"], f"Your FlexoCards {plan['name']} plan is active", "Payment received",
-               [f"Thanks! We received ₹{pay['amount_inr']} for the {plan['name']} plan ({'monthly' if pay['cycle'] == 'month' else 'yearly'}).",
-                f"Your plan is active until {end}. You get {plan['cards_per_month']} card downloads or shares each month.",
-                f"Payment reference: {rzp_payment_id}"], ("Open my dashboard", "/dashboard"), "receipt")
+        notify(pay["user_email"], f"Your FlexoCards {plan['name']} plan is active", f"{plan['name']} plan activated",
+               ["Thanks for upgrading! Your payment went through and your new plan is ready to use.",
+                "Paid plans unlock premium templates, public share links and 6-hour card editing."],
+               ("Create a card", "/create"), "receipt", eyebrow="Payment receipt",
+               details=[("Plan", f"{plan['name']} · {'Monthly' if pay['cycle'] == 'month' else 'Yearly'}"), ("Amount paid", f"₹{pay['amount_inr']}"),
+                        ("Cards per month", plan["cards_per_month"]), ("Active until", end), ("Payment ID", rzp_payment_id)])
 
 
 class VerifyIn(BaseModel):
@@ -1381,10 +1383,10 @@ async def admin_invite(body: InviteIn, member: dict = Depends(require_perm("admi
            "created_at": iso(), "expires_at": iso(now() + timedelta(hours=body.expires_hours))}
     await db.admin_invitations.insert_one(inv)
     await audit(member, "invitation.created", inv["email"], {"role": body.role, "permissions": perms, "expires_at": inv["expires_at"]})
-    notify(inv["email"], "You're invited to the FlexoCards admin team", "Admin invitation",
+    notify(inv["email"], "You're invited to the FlexoCards admin team", "Join the admin team",
            [f"{member.get('name') or 'A FlexoCards admin'} invited you to join the FlexoCards admin team as {body.role.replace('_', ' ')}.",
             f"This single-use invitation expires on {inv['expires_at'][:10]}. Sign in with this email address to accept it."],
-           ("Accept invitation", f"/invite/{token}"), "invitation")
+           ("Accept invitation", f"/invite/{token}"), "invitation", eyebrow="Admin invitation")
     return {"id": inv["id"], "token": token, "expires_at": inv["expires_at"]}
 
 
@@ -1649,11 +1651,11 @@ def email_cfg() -> dict:
     return settings_store.get("email")
 
 
-async def _deliver(to: str, subject: str, heading: str, paras: list, cta, kind: str, cfg: dict = None):
+async def _deliver(to: str, subject: str, heading: str, paras: list, cta, kind: str, cfg: dict = None, details: list = None, eyebrow: str = ""):
     cfg = cfg or email_cfg()
     log = {"id": new_id(), "to": to, "subject": subject, "kind": kind, "provider": cfg["provider"], "created_at": iso()}
     try:
-        await send_email(cfg, to, subject, render(cfg, heading, paras, cta))
+        await send_email(cfg, to, subject, render(cfg, heading, paras, cta, details, eyebrow))
         log["status"] = "sent"
     except (EmailError, ValueError, httpx.HTTPError) as e:
         log.update(status="failed", error=str(e)[:300])
@@ -1663,8 +1665,8 @@ async def _deliver(to: str, subject: str, heading: str, paras: list, cta, kind: 
     return log
 
 
-def notify(to: str, subject: str, heading: str, paras: list, cta=None, kind: str = "notice"):
-    asyncio.create_task(_deliver(to, subject, heading, paras, cta, kind))
+def notify(to: str, subject: str, heading: str, paras: list, cta=None, kind: str = "notice", details: list = None, eyebrow: str = ""):
+    asyncio.create_task(_deliver(to, subject, heading, paras, cta, kind, details=details, eyebrow=eyebrow))
 
 
 def _rzp_view() -> dict:
@@ -1751,9 +1753,10 @@ async def admin_test_email(request: Request, member: dict = Depends(require_perm
     if not member.get("email"):
         raise HTTPException(400, "Your account has no email address.")
     cfg = email_cfg()
-    log = await _deliver(member["email"], "FlexoCards test email", "Your email setup works",
+    log = await _deliver(member["email"], "FlexoCards test email", "Your email is working",
                          [f"This test was sent using {'your SMTP server (' + cfg['smtp_host'] + ')' if cfg['provider'] == 'smtp' else 'Emergent email'}.",
-                          "Payment receipts, admin invitations and blog notifications will be sent the same way."], ("Open admin panel", "/admin/settings"), "test", cfg)
+                          "Payment receipts, admin invitations and blog notifications will be sent the same way."], ("Open admin panel", "/admin/settings"), "test", cfg,
+                         details=[("Provider", "SMTP · " + cfg["smtp_host"] if cfg["provider"] == "smtp" else "Emergent email"), ("Sender name", cfg["from_name"])], eyebrow="Test email")
     if log["status"] != "sent":
         raise HTTPException(400, f"Test email failed: {log.get('error', 'unknown error')}")
     return {"ok": True, "to": member["email"], "provider": cfg["provider"]}

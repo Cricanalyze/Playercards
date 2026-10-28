@@ -98,21 +98,60 @@ def _assert_safe_email(subject: str, html: str) -> None:
 
 
 # ---------- template ----------
-def render(cfg: dict, heading: str, paragraphs: list, cta: tuple = None) -> str:
+NAVY, GOLD, INK = "#0b1a3a", "#f5b400", "#1f2937"
+FONT = "font-family:'Segoe UI',Helvetica,Arial,sans-serif"
+
+
+def _brand_text(brand: str, size: int) -> str:
+    return (f'<span style="{FONT};font-size:{size}px;font-weight:900;font-style:italic;letter-spacing:-.5px;color:{NAVY}">Flexo</span>'
+            f'<span style="{FONT};font-size:{size}px;font-weight:900;font-style:italic;letter-spacing:-.5px;color:{GOLD}">Cards</span>'
+            if brand.lower() == "flexocards" else f'<span style="{FONT};font-size:{size}px;font-weight:900;color:{NAVY}">{brand}</span>')
+
+
+def render(cfg: dict, heading: str, paragraphs: list, cta: tuple = None, details: list = None, eyebrow: str = "") -> str:
     brand = escape(cfg["from_name"] or "FlexoCards")
-    body = "".join(f'<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#1f2937">{escape(p)}</p>' for p in paragraphs)
-    button = ""
     site = (cfg.get("site_url") or "").rstrip("/")
-    if cta and site.startswith("https://"):
-        button = (f'<p style="margin:22px 0"><a href="{escape(site + cta[1])}" style="background:#f5b400;color:#0b1a3a;'
-                  f'padding:12px 22px;border-radius:999px;font-weight:bold;text-decoration:none;display:inline-block">{escape(cta[0])}</a></p>')
-    return (f'<table role="presentation" width="100%" style="background:#f3f4f6;padding:24px 0"><tr><td align="center">'
-            f'<table role="presentation" width="560" style="max-width:560px;background:#ffffff;border-radius:14px;font-family:Arial,sans-serif">'
-            f'<tr><td style="background:#0b1a3a;padding:18px 24px;border-radius:14px 14px 0 0;color:#f5b400;font-size:22px;font-weight:bold;'
-            f'font-style:italic;letter-spacing:.5px">{brand}</td></tr>'
-            f'<tr><td style="padding:26px 24px"><h1 style="margin:0 0 16px;font-size:22px;color:#0b1a3a">{escape(heading)}</h1>{body}{button}'
-            f'<p style="margin:24px 0 0;font-size:12px;color:#6b7280">Sent by {brand}, a product of Buddy Innovations and Technologies Private Limited. '
-            f'We never ask for your password or card details by email.</p></td></tr></table></td></tr></table>')
+    https = site.startswith("https://")
+    logo = (f'<a href="{escape(site)}/" style="text-decoration:none"><img src="{escape(site)}/logo-wordmark.png" width="220" alt="{brand}" '
+            f'style="display:block;width:220px;max-width:70%;height:auto;border:0;margin:0 auto"></a>') if https else _brand_text(brand, 30)
+    body = "".join(f'<p style="margin:0 0 16px;{FONT};font-size:15px;line-height:1.65;color:{INK}">{escape(p)}</p>' for p in paragraphs)
+    box = ""
+    if details:
+        rows = "".join(
+            f'<tr><td style="padding:10px 16px;{FONT};font-size:13px;color:#6b7280;border-bottom:1px solid #e5e7eb">{escape(k)}</td>'
+            f'<td align="right" style="padding:10px 16px;{FONT};font-size:14px;font-weight:700;color:{NAVY};border-bottom:1px solid #e5e7eb">{escape(str(v))}</td></tr>'
+            for k, v in details)
+        box = (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 22px;background:#f8fafc;'
+               f'border:1px solid #e5e7eb;border-left:4px solid {GOLD};border-radius:10px;border-collapse:separate">{rows}</table>')
+    button = ""
+    if cta and https:
+        button = (f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 6px"><tr><td style="background:{GOLD};border-radius:999px">'
+                  f'<a href="{escape(site + cta[1])}" style="display:inline-block;padding:14px 30px;{FONT};font-size:15px;font-weight:800;'
+                  f'color:{NAVY};text-decoration:none;text-transform:uppercase;letter-spacing:.6px">{escape(cta[0])} &rarr;</a></td></tr></table>')
+    links = ""
+    if https:
+        links = " &nbsp;·&nbsp; ".join(f'<a href="{escape(site + p)}" style="color:{GOLD};text-decoration:none;font-weight:600">{label}</a>'
+                                       for label, p in (("Create a card", "/create"), ("Pricing", "/pricing"), ("Blog", "/blog"), ("Help", "/help")))
+        links = f'<p style="margin:0 0 14px;{FONT};font-size:13px">{links}</p>'
+    return (
+        f'<div style="display:none;max-height:0;overflow:hidden;opacity:0">{escape(heading)} — {brand}</div>'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f6;padding:28px 12px"><tr><td align="center">'
+        f'<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:18px;'
+        f'overflow:hidden;border-collapse:separate;box-shadow:0 8px 30px rgba(11,26,58,.12)">'
+        f'<tr><td align="center" style="padding:26px 24px 20px;background:#ffffff">{logo}</td></tr>'
+        f'<tr><td style="height:5px;line-height:5px;font-size:0;background:{GOLD};background-image:linear-gradient(90deg,{NAVY},{GOLD},{NAVY})">&nbsp;</td></tr>'
+        f'<tr><td style="background:{NAVY};padding:34px 32px 30px">'
+        f'<p style="margin:0 0 10px;{FONT};font-size:11px;font-weight:800;letter-spacing:3px;text-transform:uppercase;color:{GOLD}">{escape(eyebrow or brand)}</p>'
+        f'<h1 style="margin:0;{FONT};font-size:28px;line-height:1.15;font-weight:900;color:#ffffff;text-transform:uppercase;letter-spacing:-.3px">{escape(heading)}</h1>'
+        f'</td></tr>'
+        f'<tr><td style="padding:30px 32px 26px">{body}{box}{button}</td></tr>'
+        f'<tr><td style="background:#081330;padding:26px 32px;text-align:center">'
+        f'<p style="margin:0 0 4px;{FONT};font-size:20px;font-weight:900;font-style:italic"><span style="color:#ffffff">Flexo</span><span style="color:{GOLD}">Cards</span></p>'
+        f'<p style="margin:0 0 14px;{FONT};font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#94a3b8">Create &nbsp;·&nbsp; Customize &nbsp;·&nbsp; Share</p>'
+        f'{links}'
+        f'<p style="margin:0 0 6px;{FONT};font-size:11px;line-height:1.6;color:#94a3b8">Sent by {brand}, a product of Buddy Innovations and Technologies Private Limited.</p>'
+        f'<p style="margin:0;{FONT};font-size:11px;color:#64748b">We never ask for your password or card details by email.</p>'
+        f'</td></tr></table></td></tr></table>')
 
 
 # ---------- providers ----------
