@@ -13,7 +13,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import { ThemeProvider } from "next-themes";
-import { SignIn, SignUp } from "@clerk/react";
+import { SignIn, SignUp, Show } from "@clerk/react";
 import ClerkAuthProvider from "@/components/auth/ClerkAuthProvider";
 import { AppDataProvider } from "@/context/AppData";
 import { Toaster } from "@/components/ui/sonner";
@@ -47,6 +47,12 @@ const AuthPage = ({ children }) => (
   <div className="container-x py-12 min-h-[70vh] flex items-center justify-center" data-testid="auth-page">{children}</div>
 );
 
+const RequireAccount = ({ children }) => {
+  const { pathname, search } = useLocation();
+  const back = encodeURIComponent(window.location.origin + pathname + search);
+  return (<><Show when="signed-in">{children}</Show><Show when="signed-out"><Navigate to={`/sign-up?redirect_url=${back}`} replace /></Show></>);
+};
+
 function App() {
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
@@ -57,7 +63,7 @@ function App() {
             <Routes>
               <Route element={<PublicShell />}>
                 <Route path="/" element={<Home />} />
-                <Route path="/create" element={<Create />} />
+                <Route path="/create" element={<RequireAccount><Create /></RequireAccount>} />
                 <Route path="/explore" element={<Explore />} />
                 <Route path="/pricing" element={<Pricing />} />
                 <Route path="/help" element={<Help />} />

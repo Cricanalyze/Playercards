@@ -46,7 +46,7 @@ const Hero = () => (
           <Button asChild size="lg" variant="outline" className="rounded-full h-12 px-7 font-bold uppercase tracking-wide hover:bg-accent hover:text-foreground" data-testid="hero-explore-designs-button">
             <Link to="/explore">Explore Designs</Link></Button>
         </div>
-        <p className="mt-6 text-xs text-muted-foreground">No sign-up needed to design · 2 free downloads a month · Photos stay on your device</p>
+        <p className="mt-6 text-xs text-muted-foreground">Free account · 2 card downloads a month · Photos stay on your device</p>
       </div>
       <div className="relative h-[460px] sm:h-[520px]" data-testid="hero-demo-cards">
         <DemoCard i={1} width={230} className="absolute left-0 sm:left-4 top-16 floaty" style={{ "--r": "-8deg", animationDelay: "-2s" }} />
