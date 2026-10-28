@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { Show, UserButton } from "@clerk/react";
 import { useTheme } from "next-themes";
-import { Menu, Moon, Sun, Shield, LayoutDashboard } from "lucide-react";
+import { Menu, Moon, Sun, Shield, LayoutDashboard, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Logo } from "./Logo";
@@ -13,6 +13,7 @@ const NAV = [
   { to: "/explore", label: "Explore", id: "explore" },
   { to: "/create", label: "Create Card", id: "create" },
   { to: "/pricing", label: "Pricing", id: "pricing" },
+  { to: "/blog", label: "Blog", id: "blog" },
   { to: "/help", label: "Help", id: "help" },
 ];
 
@@ -41,7 +42,7 @@ export default function Header() {
   const isStaff = me?.member?.perms?.length > 0;
   return (
     <header className="sticky top-0 z-40 glass border-b border-border">
-      <div className="container-x h-16 flex items-center justify-between gap-4">
+      <div className="container-x h-16 flex items-center justify-between gap-2 sm:gap-4">
         <Logo />
         <nav className="hidden lg:flex items-center gap-7"><NavItems prefix="desktop" /></nav>
         <div className="flex items-center gap-2">
@@ -55,6 +56,11 @@ export default function Header() {
             <Link to="/dashboard" data-testid="header-dashboard-link" aria-label="My cards" className="w-10 h-10 grid place-items-center rounded-full border border-border hover:bg-accent transition-colors">
               <LayoutDashboard className="w-4 h-4" />
             </Link>
+            {me?.member?.can_blog && (
+              <Link to="/write" data-testid="header-write-link" aria-label="My blog posts" className="hidden sm:grid w-10 h-10 place-items-center rounded-full border border-border hover:bg-accent transition-colors">
+                <PenLine className="w-4 h-4" />
+              </Link>
+            )}
             <UserButton />
           </Show>
           <Show when="signed-out">
@@ -71,7 +77,10 @@ export default function Header() {
               <SheetTitle className="sr-only">Menu</SheetTitle>
               <div className="flex flex-col gap-6 mt-10">
                 <NavItems prefix="mobile" onClick={() => setOpen(false)} />
+                <Show when="signed-in"><Link to="/dashboard" onClick={() => setOpen(false)} data-testid="mobile-nav-dashboard" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">My Cards</Link></Show>
+                {me?.member?.can_blog && <Link to="/write" onClick={() => setOpen(false)} data-testid="mobile-nav-write" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Write a post</Link>}
                 {isStaff && <Link to="/admin" onClick={() => setOpen(false)} data-testid="mobile-nav-admin" className="text-sm font-semibold uppercase tracking-wider text-amber-500">Admin Panel</Link>}
+                <Link to="/create" onClick={() => setOpen(false)} data-testid="mobile-nav-create-cta" className="inline-flex items-center justify-center h-11 rounded-full bg-amber-500 text-slate-950 font-bold uppercase text-sm">Create Card</Link>
                 <Show when="signed-out"><Link to="/sign-in" onClick={() => setOpen(false)} data-testid="mobile-nav-sign-in" className="text-sm font-semibold uppercase tracking-wider">Sign in</Link></Show>
               </div>
             </SheetContent>

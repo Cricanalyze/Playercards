@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, Link } from "react-router-dom";
 import { Show, UserButton } from "@clerk/react";
-import { BarChart3, Users, CreditCard, Package, Trophy, LayoutTemplate, ShieldCheck, ScrollText, Flag, ArrowLeft } from "lucide-react";
+import { BarChart3, Users, CreditCard, Package, Trophy, LayoutTemplate, ShieldCheck, ScrollText, Flag, ArrowLeft, Newspaper } from "lucide-react";
+import Blog from "./Blog";
 import { useApi, errMsg } from "@/lib/api";
 import { Logo } from "@/components/layout/Logo";
 import Overview from "./Overview";
@@ -27,6 +28,7 @@ const NAV = [
   ["team", "Admins & Invites", ShieldCheck, "admins.manage", Team],
   ["audit", "Audit log", ScrollText, "audit.view", Audit],
   ["reports", "Reports", Flag, "moderation.manage", Reports],
+  ["blog", "Blog", Newspaper, "blog.manage", Blog],
 ];
 
 export const PageHead = ({ title, sub, children }) => (
@@ -56,7 +58,7 @@ function Shell() {
           <div className="p-4 flex items-center justify-between lg:block">
             <Logo />
             <p className="hidden lg:block text-[10px] uppercase tracking-widest text-amber-500 mt-2" data-testid="admin-my-role">{meta.my_role.replace("_", " ")}</p>
-            <div className="lg:hidden"><UserButton /></div>
+            <div className="lg:hidden flex items-center gap-3"><Link to="/" className="text-xs text-muted-foreground" data-testid="admin-back-to-site-mobile">Site</Link><UserButton /></div>
           </div>
           <nav className="flex lg:flex-col gap-1 overflow-x-auto px-2 pb-2 lg:pb-0 [scrollbar-width:none]">
             {items.map(([path, label, Icon]) => (

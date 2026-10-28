@@ -28,6 +28,12 @@ import Legal from "@/pages/Legal";
 import Dashboard from "@/pages/Dashboard";
 import Invite from "@/pages/Invite";
 import AdminApp from "@/admin/AdminApp";
+import Blog from "@/pages/Blog";
+import BlogPost from "@/pages/BlogPost";
+import Write from "@/pages/Write";
+import PostEditor from "@/pages/PostEditor";
+import SharedCard from "@/pages/SharedCard";
+import ScreenGuard from "@/components/ScreenGuard";
 
 const ScrollTop = () => {
   const { pathname, hash } = useLocation();
@@ -60,6 +66,7 @@ function App() {
         <ClerkAuthProvider>
           <AppDataProvider>
             <ScrollTop />
+            <ScreenGuard />
             <Routes>
               <Route element={<PublicShell />}>
                 <Route path="/" element={<Home />} />
@@ -71,6 +78,11 @@ function App() {
                 <Route path="/terms" element={<Legal kind="terms" />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/invite/:token" element={<Invite />} />
+                <Route path="/blog" element={<Blog />} />
+                <Route path="/blog/:slug" element={<BlogPost />} />
+                <Route path="/c/:shareId" element={<SharedCard />} />
+                <Route path="/write" element={<RequireAccount><Write /></RequireAccount>} />
+                <Route path="/write/:id" element={<RequireAccount><PostEditor /></RequireAccount>} />
                 <Route path="/sign-in/*" element={<AuthPage><SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" withSignUp /></AuthPage>} />
                 <Route path="/sign-up/*" element={<AuthPage><SignUp routing="path" path="/sign-up" signInUrl="/sign-in" /></AuthPage>} />
               </Route>

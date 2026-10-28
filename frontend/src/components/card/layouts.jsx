@@ -39,7 +39,7 @@ export const metaLine = (d, sport) =>
   [d.show.position && d.position, d.show.team && d.team, d.show.country && d.country].filter(Boolean).join(" · ") || sport?.name || "";
 
 const Watermark = ({ on, color = "rgba(255,255,255,.55)" }) =>
-  on ? <div style={abs({ bottom: 6, left: 0, right: 0, textAlign: "center", fontFamily: M, fontSize: 7, letterSpacing: 2, color })}>MADE WITH RIVALCARD</div> : null;
+  on ? <div style={abs({ bottom: 6, left: 0, right: 0, textAlign: "center", fontFamily: M, fontSize: 7, letterSpacing: 2, color })}>MADE WITH FLEXOCARDS</div> : null;
 
 const Name = ({ d, base, max, style }) => (
   <div style={{ fontFamily: H, fontWeight: 900, textTransform: "uppercase", lineHeight: 0.92, letterSpacing: -0.5, fontSize: fitSize(d.name || "Your Name", base, max), ...clip1, ...style }}>

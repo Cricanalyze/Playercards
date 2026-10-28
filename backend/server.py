@@ -13,7 +13,7 @@ from typing import List, Optional
 import requests
 from dotenv import load_dotenv
 from dateutil.relativedelta import relativedelta
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, field_validator
 from pymongo import ReturnDocument
@@ -28,15 +28,17 @@ try:
     from backend.seed_data import SPORTS
     from backend.seed_catalog import TEMPLATES, PLANS, LAYOUTS, BACKGROUNDS, BG_TIER_FEATURE, COLLECTIONS
     from backend.rbac import ROLES, RANK, PERMISSIONS, ROLE_DEFAULTS, STAFF_ROLES, RETIRED_ROLES, effective_role, effective_perms
+    from backend.storage import init_storage, put_object, get_object, APP_PREFIX
 except ModuleNotFoundError:
     from clerk_auth import clerk_router, require_user, _publishable_key, _secret_key
     from seed_data import SPORTS
     from seed_catalog import TEMPLATES, PLANS, LAYOUTS, BACKGROUNDS, BG_TIER_FEATURE, COLLECTIONS
     from rbac import ROLES, RANK, PERMISSIONS, ROLE_DEFAULTS, STAFF_ROLES, RETIRED_ROLES, effective_role, effective_perms
+    from storage import init_storage, put_object, get_object, APP_PREFIX
 
 client = AsyncIOMotorClient(os.environ["MONGO_URL"])
 db = client[os.environ["DB_NAME"]]
-app = FastAPI(title="RivalCard API")
+app = FastAPI(title="FlexoCards API")
 api = APIRouter(prefix="/api")
 logger = logging.getLogger("rivalcard")
 logging.basicConfig(level=logging.INFO)
@@ -77,7 +79,7 @@ def rate_limit(request: Request, bucket: str, limit: int, window: int = 60):
 # ---------- Clerk backend helpers ----------
 def _clerk(method, path, **kw):
     r = requests.request(method, f"https://api.clerk.com/v1{path}", timeout=10,
-                         headers={"Authorization": f"Bearer {_secret_key()}", "User-Agent": "rivalcard-app"}, **kw)
+                         headers={"Authorization": f"Bearer {_secret_key()}", "User-Agent": "flexocards-app"}, **kw)
     r.raise_for_status()
     return r.json()
 
@@ -250,12 +252,20 @@ async def startup():
     await db.usage_events.create_index("key", unique=True)
     await db.payments.create_index("order_id")
     await db.webhook_events.create_index("event_id", unique=True)
+    await db.blog_posts.create_index("slug", unique=True)
+    await db.blog_posts.create_index([("status", 1), ("published_at", -1)])
+    await db.saved_cards.create_index("share.id", sparse=True)
+    await db.files.create_index("storage_path")
+    try:
+        init_storage()
+    except Exception as e:
+        logger.error("storage init failed: %s", e)
 
 
 # ---------- public ----------
 @api.get("/")
 async def root():
-    return {"app": "RivalCard", "ok": True}
+    return {"app": "FlexoCards", "ok": True}
 
 
 @api.get("/sports")
@@ -559,7 +569,8 @@ async def create_report(body: ReportIn, request: Request):
 @api.get("/me")
 async def me(member: dict = Depends(current_member)):
     subs = await db.subscriptions.find({"user_id": member["user_id"]}, NOFIELDS).sort("created_at", -1).to_list(100)
-    return {"member": {k: member.get(k) for k in ("user_id", "email", "name", "role", "perms", "status", "created_at", "favorite_templates")},
+    keys = ("user_id", "email", "name", "role", "perms", "status", "created_at", "favorite_templates")
+    return {"member": {**{k: member.get(k) for k in keys}, "can_blog": can_write_blog(member)},
             "entitlements": await get_entitlements(member), "subscriptions": subs,
             "payments": await db.payments.find({"user_id": member["user_id"]}, {"_id": 0, "history": 0}).sort("created_at", -1).to_list(100)}
 
@@ -590,9 +601,27 @@ class CardIn(BaseModel):
         return v
 
 
+EDIT_WINDOW = timedelta(hours=6)
+
+
+def edit_state(card: dict, ent: dict) -> dict:
+    until = datetime.fromisoformat(card["created_at"]) + EDIT_WINDOW
+    paid = ent["plan_id"] != "free"
+    reason = "" if paid and now() < until else "free_plan" if not paid else "window_closed"
+    return {"editable": not reason, "editable_until": iso(until), "lock_reason": reason}
+
+
+def public_card(c: dict, ent: dict) -> dict:
+    share = c.get("share")
+    return {**{k: v for k, v in c.items() if k != "share"}, **edit_state(c, ent),
+            "share_id": share["id"] if share else None}
+
+
 @api.get("/me/cards")
 async def my_cards(member: dict = Depends(current_member)):
-    return await db.saved_cards.find({"user_id": member["user_id"]}, NOFIELDS).sort("updated_at", -1).to_list(500)
+    ent = await get_entitlements(member)
+    rows = await db.saved_cards.find({"user_id": member["user_id"]}, NOFIELDS).sort("updated_at", -1).to_list(500)
+    return [public_card(c, ent) for c in rows]
 
 
 @api.post("/me/cards")
@@ -603,16 +632,86 @@ async def save_card(body: CardIn, member: dict = Depends(current_member)):
     doc = {"id": new_id(), "user_id": member["user_id"], **body.model_dump(), "created_at": iso(), "updated_at": iso()}
     await db.saved_cards.insert_one(doc)
     doc.pop("_id", None)
-    return doc
+    return public_card(doc, ent)
 
 
 @api.put("/me/cards/{card_id}")
 async def update_card(card_id: str, body: CardIn, member: dict = Depends(current_member)):
-    r = await db.saved_cards.update_one({"id": card_id, "user_id": member["user_id"]},
-                                        {"$set": {**body.model_dump(), "updated_at": iso()}})
+    card = await db.saved_cards.find_one({"id": card_id, "user_id": member["user_id"]}, NOFIELDS)
+    if not card:
+        raise HTTPException(404, "Not found")
+    st = edit_state(card, await get_entitlements(member))
+    if st["lock_reason"] == "free_plan":
+        upgrade_error("Editing a card after it's created is part of paid plans. Create a new card or upgrade.", "edit")
+    if st["lock_reason"]:
+        raise HTTPException(403, "The 6-hour edit window for this card has closed. Create a new card instead.")
+    await db.saved_cards.update_one({"id": card_id}, {"$set": {**body.model_dump(), "updated_at": iso()}})
+    return {"ok": True}
+
+
+class ShareIn(BaseModel):
+    image: str = Field(max_length=12_000_000)
+
+
+@api.post("/me/cards/{card_id}/share")
+async def share_card(card_id: str, body: ShareIn, request: Request, member: dict = Depends(current_member)):
+    rate_limit(request, "share", 10)
+    card = await db.saved_cards.find_one({"id": card_id, "user_id": member["user_id"]}, NOFIELDS)
+    if not card:
+        raise HTTPException(404, "Not found")
+    if (await get_entitlements(member))["plan_id"] == "free":
+        upgrade_error("Public share links are part of paid plans. Upgrade to Basic or higher.", "public_share")
+    prefix = "data:image/png;base64,"
+    if not body.image.startswith(prefix):
+        raise HTTPException(400, "Card image must be a PNG")
+    import base64
+    try:
+        raw = base64.b64decode(body.image[len(prefix):], validate=True)
+    except ValueError:
+        raise HTTPException(400, "Invalid image")
+    path = f"{APP_PREFIX}/shares/{member['user_id']}/{new_id()}.png"
+    try:
+        res = put_object(path, raw, "image/png")
+    except requests.RequestException:
+        raise HTTPException(502, "Could not store the card image. Try again.")
+    await db.files.insert_one({"id": new_id(), "storage_path": res["path"], "content_type": "image/png", "public": True,
+                               "owner_id": member["user_id"], "kind": "share", "size": len(raw), "is_deleted": False, "created_at": iso()})
+    share_id = (card.get("share") or {}).get("id") or secrets.token_urlsafe(8)
+    await db.saved_cards.update_one({"id": card_id}, {"$set": {"share": {"id": share_id, "image_path": res["path"], "shared_at": iso()}}})
+    return {"share_id": share_id}
+
+
+@api.delete("/me/cards/{card_id}/share")
+async def unshare_card(card_id: str, member: dict = Depends(current_member)):
+    r = await db.saved_cards.update_one({"id": card_id, "user_id": member["user_id"]}, {"$unset": {"share": ""}})
     if not r.matched_count:
         raise HTTPException(404, "Not found")
     return {"ok": True}
+
+
+@api.get("/share/{share_id}")
+async def view_share(share_id: str):
+    c = await db.saved_cards.find_one({"share.id": share_id}, NOFIELDS)
+    owner = c and await db.users.find_one({"user_id": c["user_id"], "status": "active"}, NOFIELDS)
+    if not owner:
+        raise HTTPException(404, "This card link doesn't exist or was turned off.")
+    if (await get_entitlements(owner))["plan_id"] == "free":
+        raise HTTPException(410, "This card is no longer public.")
+    sport = await db.sports.find_one({"id": c["sport_id"]}, {"_id": 0, "name": 1})
+    return {"title": c.get("title") or c["data"].get("name") or "Player card", "sport": (sport or {}).get("name", ""),
+            "owner": owner.get("name", ""), "image_url": f"/api/files/{c['share']['image_path']}", "shared_at": c["share"]["shared_at"]}
+
+
+@api.get("/files/{path:path}")
+async def serve_file(path: str):
+    rec = await db.files.find_one({"storage_path": path, "is_deleted": False, "public": True}, NOFIELDS)
+    if not rec:
+        raise HTTPException(404, "File not found")
+    try:
+        data, ctype = get_object(path)
+    except requests.RequestException:
+        raise HTTPException(502, "Could not load file")
+    return Response(content=data, media_type=rec.get("content_type") or ctype, headers={"Cache-Control": "public, max-age=86400"})
 
 
 @api.delete("/me/cards/{card_id}")
@@ -1306,6 +1405,212 @@ async def admin_report_patch(rid: str, body: ReportPatch, member: dict = Depends
     if not r.matched_count:
         raise HTTPException(404, "Not found")
     await audit(member, "report.updated", rid, {"status": body.status})
+    return {"ok": True}
+
+
+# ---------- blog ----------
+def can_write_blog(m: dict) -> bool:
+    return "blog.manage" in (m.get("perms") or []) or bool(m.get("can_blog"))
+
+
+async def blog_writer(member: dict = Depends(current_member)) -> dict:
+    if not can_write_blog(member):
+        raise HTTPException(403, "You don't have blog access. Ask an admin to add you as an author.")
+    return member
+
+
+IMAGE_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}
+
+
+@api.post("/uploads/image")
+async def upload_image(file: UploadFile = File(...), member: dict = Depends(blog_writer)):
+    ext = IMAGE_TYPES.get(file.content_type or "")
+    if not ext:
+        raise HTTPException(400, "Upload a JPG, PNG, WebP or GIF image.")
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(400, "Image must be 5 MB or smaller.")
+    try:
+        res = put_object(f"{APP_PREFIX}/blog/{member['user_id']}/{new_id()}.{ext}", data, file.content_type)
+    except requests.RequestException:
+        raise HTTPException(502, "Upload failed. Try again.")
+    await db.files.insert_one({"id": new_id(), "storage_path": res["path"], "content_type": file.content_type, "public": True,
+                               "owner_id": member["user_id"], "kind": "blog", "original_filename": file.filename, "size": len(data),
+                               "is_deleted": False, "created_at": iso()})
+    return {"url": f"/api/files/{res['path']}"}
+
+
+class PostIn(BaseModel):
+    title: str = Field(min_length=3, max_length=160)
+    excerpt: str = Field(default="", max_length=300)
+    content: str = Field(default="", max_length=100_000)
+    cover_image: str = Field(default="", max_length=500)
+    category: str = Field(default="", max_length=40)
+    tags: List[str] = Field(default_factory=list, max_length=10)
+    seo_title: str = Field(default="", max_length=70)
+    seo_description: str = Field(default="", max_length=170)
+    featured: bool = False
+    status: str = Field(default="draft", pattern="^(draft|pending|published)$")
+
+    @field_validator("tags")
+    @classmethod
+    def clean_tags(cls, v):
+        return list(dict.fromkeys(t.strip().lower()[:30] for t in v if t.strip()))
+
+
+POST_LIST_FIELDS = {"_id": 0, "content": 0, "review_note": 0}
+
+
+async def _slug(title: str, exclude_id: str = "") -> str:
+    import re
+    base = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:70] or "post"
+    slug, i = base, 2
+    while await db.blog_posts.find_one({"slug": slug, "id": {"$ne": exclude_id}}):
+        slug, i = f"{base}-{i}", i + 1
+    return slug
+
+
+def _post_fields(body: PostIn, member: dict, old: Optional[dict] = None) -> dict:
+    d = body.model_dump()
+    is_editor = "blog.manage" in member["perms"]
+    if not is_editor:
+        d["featured"] = (old or {}).get("featured", False)
+        if d["status"] == "published":
+            d["status"] = "pending"
+    d["reading_minutes"] = max(1, round(len(d["content"].split()) / 200))
+    d["updated_at"] = iso()
+    if d["status"] == "published" and not (old or {}).get("published_at"):
+        d["published_at"] = iso()
+    return d
+
+
+async def _own_post(post_id: str, member: dict) -> dict:
+    p = await db.blog_posts.find_one({"id": post_id}, NOFIELDS)
+    if not p or (p["author_id"] != member["user_id"] and "blog.manage" not in member["perms"]):
+        raise HTTPException(404, "Post not found")
+    return p
+
+
+@api.get("/blog")
+async def blog_list(q: str = "", tag: str = "", category: str = "", page: int = 1):
+    f = {"status": "published"}
+    if q:
+        import re
+        rx = {"$regex": re.escape(q[:60]), "$options": "i"}
+        f["$or"] = [{"title": rx}, {"excerpt": rx}, {"tags": rx}]
+    if tag:
+        f["tags"] = tag.lower()
+    if category:
+        f["category"] = category
+    size, page = 12, max(1, page)
+    total = await db.blog_posts.count_documents(f)
+    rows = await db.blog_posts.find(f, POST_LIST_FIELDS).sort([("featured", -1), ("published_at", -1)]).skip((page - 1) * size).limit(size).to_list(size)
+    cats = await db.blog_posts.distinct("category", {"status": "published"})
+    return {"posts": rows, "total": total, "page": page, "pages": max(1, -(-total // size)), "categories": [c for c in cats if c]}
+
+
+@api.get("/blog/{slug}")
+async def blog_post(slug: str):
+    p = await db.blog_posts.find_one_and_update({"slug": slug, "status": "published"}, {"$inc": {"views": 1}},
+                                                projection={"_id": 0, "review_note": 0}, return_document=ReturnDocument.AFTER)
+    if not p:
+        raise HTTPException(404, "Post not found")
+    related = await db.blog_posts.find({"status": "published", "id": {"$ne": p["id"]}, "tags": {"$in": p.get("tags") or ["-"]}},
+                                       POST_LIST_FIELDS).sort("published_at", -1).limit(3).to_list(3)
+    return {"post": p, "related": related}
+
+
+@api.get("/me/posts")
+async def my_posts(member: dict = Depends(blog_writer)):
+    return await db.blog_posts.find({"author_id": member["user_id"]}, {"_id": 0, "content": 0}).sort("updated_at", -1).to_list(500)
+
+
+@api.get("/me/posts/{post_id}")
+async def get_my_post(post_id: str, member: dict = Depends(blog_writer)):
+    return await _own_post(post_id, member)
+
+
+@api.post("/me/posts")
+async def create_post(body: PostIn, member: dict = Depends(blog_writer)):
+    doc = {"id": new_id(), "slug": await _slug(body.title), "author_id": member["user_id"], "author_name": member.get("name") or "FlexoCards",
+           "views": 0, "created_at": iso(), "published_at": None, **_post_fields(body, member)}
+    await db.blog_posts.insert_one(doc)
+    doc.pop("_id", None)
+    await audit(member, "blog.created", doc["id"], {"title": body.title, "status": doc["status"]})
+    return doc
+
+
+@api.put("/me/posts/{post_id}")
+async def update_post(post_id: str, body: PostIn, member: dict = Depends(blog_writer)):
+    old = await _own_post(post_id, member)
+    d = _post_fields(body, member, old)
+    if body.title != old["title"] and old["status"] != "published":
+        d["slug"] = await _slug(body.title, post_id)
+    await db.blog_posts.update_one({"id": post_id}, {"$set": d})
+    await audit(member, "blog.updated", post_id, {"status": d["status"]})
+    return await db.blog_posts.find_one({"id": post_id}, NOFIELDS)
+
+
+@api.delete("/me/posts/{post_id}")
+async def delete_post(post_id: str, member: dict = Depends(blog_writer)):
+    await _own_post(post_id, member)
+    await db.blog_posts.delete_one({"id": post_id})
+    await audit(member, "blog.deleted", post_id)
+    return {"ok": True}
+
+
+@admin.get("/blog/posts")
+async def admin_blog_posts(status: str = "", member: dict = Depends(require_perm("blog.manage"))):
+    f = {"status": status} if status in ("draft", "pending", "published", "rejected") else {}
+    return await db.blog_posts.find(f, {"_id": 0, "content": 0}).sort("updated_at", -1).to_list(500)
+
+
+class PostStatusIn(BaseModel):
+    status: str = Field(pattern="^(draft|pending|published|rejected)$")
+    note: str = Field(default="", max_length=300)
+
+
+@admin.patch("/blog/posts/{post_id}/status")
+async def admin_blog_status(post_id: str, body: PostStatusIn, member: dict = Depends(require_perm("blog.manage"))):
+    p = await db.blog_posts.find_one({"id": post_id}, NOFIELDS)
+    if not p:
+        raise HTTPException(404, "Post not found")
+    upd = {"status": body.status, "review_note": body.note, "updated_at": iso()}
+    if body.status == "published" and not p.get("published_at"):
+        upd["published_at"] = iso()
+    await db.blog_posts.update_one({"id": post_id}, {"$set": upd})
+    await audit(member, f"blog.{body.status}", post_id, {"note": body.note})
+    return {"ok": True}
+
+
+@admin.get("/blog/authors")
+async def admin_blog_authors(member: dict = Depends(require_perm("blog.manage"))):
+    rows = await db.users.find({"can_blog": True, **IN_ENV}, {"_id": 0, "user_id": 1, "email": 1, "name": 1, "blog_granted_at": 1}).to_list(500)
+    for r in rows:
+        r["posts"] = await db.blog_posts.count_documents({"author_id": r["user_id"]})
+    return rows
+
+
+class AuthorIn(BaseModel):
+    email: str = Field(pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$", max_length=200)
+
+
+@admin.post("/blog/authors")
+async def admin_blog_add_author(body: AuthorIn, member: dict = Depends(require_perm("blog.manage"))):
+    u = await db.users.find_one({"email": body.email.strip().lower(), "status": "active", **IN_ENV}, NOFIELDS)
+    if not u:
+        raise HTTPException(404, "No active FlexoCards account uses this email. Ask them to sign up first.")
+    await db.users.update_one({"user_id": u["user_id"]}, {"$set": {"can_blog": True, "blog_granted_at": iso(), "blog_granted_by": member["user_id"]}})
+    await audit(member, "blog.author_added", u["user_id"], {"email": u["email"]})
+    return {"user_id": u["user_id"], "email": u["email"], "name": u.get("name")}
+
+
+@admin.delete("/blog/authors/{user_id}")
+async def admin_blog_remove_author(user_id: str, member: dict = Depends(require_perm("blog.manage"))):
+    r = await db.users.update_one({"user_id": user_id, "can_blog": True}, {"$set": {"can_blog": False}})
+    if not r.modified_count:
+        raise HTTPException(404, "Not an author")
+    await audit(member, "blog.author_removed", user_id)
     return {"ok": True}
 
 

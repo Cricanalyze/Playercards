@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { Show } from "@clerk/react";
 import { toast } from "sonner";
-import { Trash2, Pencil, Crown } from "lucide-react";
+import { Trash2, Pencil, Crown, Eye, Globe, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useAppData } from "@/context/AppData";
-import { useApi, errMsg, fmtDate, inr } from "@/lib/api";
+import { useApi, errMsg, fmtDate, fmtDateTime, inr } from "@/lib/api";
 
 function Inner() {
   const { me, meError, sports, templates, refreshMe } = useAppData();
@@ -20,6 +20,7 @@ function Inner() {
   if (!me) return <div className="container-x py-24 text-center text-muted-foreground">Loading your account…</div>;
   const { member, entitlements: ent, subscriptions, payments } = me;
   const del = async (id) => { try { await api("delete", `/me/cards/${id}`); toast.success("Card deleted"); load(); } catch (e) { toast.error(errMsg(e)); } };
+  const unshare = async (id) => { try { await api("delete", `/me/cards/${id}/share`); toast.success("Public link turned off"); load(); } catch (e) { toast.error(errMsg(e)); } };
   const deleteMe = async () => { try { await api("delete", "/me"); toast.success("Your data was deleted."); refreshMe(); } catch (e) { toast.error(errMsg(e)); } };
 
   return (
@@ -30,7 +31,10 @@ function Inner() {
           <h1 className="font-display font-black uppercase text-4xl sm:text-5xl">Hey, {member.name}</h1>
           <p className="text-sm text-muted-foreground" data-testid="dashboard-email">{member.email}</p>
         </div>
-        <Button asChild className="rounded-full font-bold hover:bg-amber-400 hover:text-slate-950" data-testid="dashboard-new-card-button"><Link to="/create">New card</Link></Button>
+        <div className="flex flex-wrap gap-2">
+          {member.can_blog && <Button asChild variant="outline" className="rounded-full font-bold" data-testid="dashboard-write-button"><Link to="/write"><PenLine className="w-4 h-4 mr-1" />My blog posts</Link></Button>}
+          <Button asChild className="rounded-full font-bold hover:bg-amber-400 hover:text-slate-950" data-testid="dashboard-new-card-button"><Link to="/create">New card</Link></Button>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
@@ -72,7 +76,7 @@ function Inner() {
 
       <div>
         <h2 className="font-display font-black uppercase text-2xl">Saved cards</h2>
-        <p className="text-sm text-muted-foreground">Only card details are saved — re-add your photo when you open one.</p>
+        <p className="text-sm text-muted-foreground">Only card details are saved — re-add your photo when you open one. Paid plans can edit a card for 6 hours after creating it.</p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4" data-testid="saved-cards-list">
           {cards === null ? <p className="text-muted-foreground text-sm">Loading…</p> : cards.length === 0 ? <p className="text-sm text-muted-foreground" data-testid="saved-cards-empty">No saved cards yet.</p> :
             cards.map((c) => (
@@ -80,9 +84,14 @@ function Inner() {
                 <div className="min-w-0">
                   <p className="font-display font-bold uppercase text-lg truncate">{c.title || c.data?.name || "Untitled"}</p>
                   <p className="text-xs text-muted-foreground truncate">{sports.find((s) => s.id === c.sport_id)?.name} · {templates.find((t) => t.id === c.template_id)?.name} · {fmtDate(c.updated_at)}</p>
+                  <p className={`text-[11px] mt-1 ${c.editable ? "text-amber-500" : "text-muted-foreground"}`} data-testid={`saved-card-edit-status-${c.id}`}>
+                    {c.editable ? `Editable until ${fmtDateTime(c.editable_until)}` : c.lock_reason === "free_plan" ? "Locked · editing needs a paid plan" : "Locked · 6-hour edit window closed"}</p>
+                  {c.share_id && <p className="text-[11px] mt-1 flex items-center gap-2" data-testid={`saved-card-share-${c.id}`}><Globe className="w-3 h-3 text-emerald-500" />
+                    <button className="text-emerald-500 hover:underline" onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/c/${c.share_id}`).then(() => toast.success("Public link copied"))} data-testid={`saved-card-copy-link-${c.id}`}>Copy public link</button>
+                    <button className="text-muted-foreground hover:underline" onClick={() => unshare(c.id)} data-testid={`saved-card-unshare-${c.id}`}>Turn off</button></p>}
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  <Button asChild size="icon" variant="ghost" data-testid={`saved-card-open-${c.id}`}><Link to={`/create?card=${c.id}`} aria-label="Open"><Pencil className="w-4 h-4" /></Link></Button>
+                  <Button asChild size="icon" variant="ghost" data-testid={`saved-card-open-${c.id}`}><Link to={`/create?card=${c.id}`} aria-label={c.editable ? "Edit" : "Open"}>{c.editable ? <Pencil className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</Link></Button>
                   <Button size="icon" variant="ghost" onClick={() => del(c.id)} data-testid={`saved-card-delete-${c.id}`} aria-label="Delete"><Trash2 className="w-4 h-4" /></Button>
                 </div>
               </div>
@@ -92,7 +101,7 @@ function Inner() {
 
       <div className="rounded-2xl border border-destructive/40 p-6">
         <p className="font-semibold">Delete my data</p>
-        <p className="text-sm text-muted-foreground mt-1">Removes your saved cards and closes your RivalCard profile. To remove your login too, use “Manage account” in the profile menu.</p>
+        <p className="text-sm text-muted-foreground mt-1">Removes your saved cards and closes your FlexoCards profile. To remove your login too, use “Manage account” in the profile menu.</p>
         <AlertDialog>
           <AlertDialogTrigger asChild><Button variant="destructive" className="mt-4 rounded-full" data-testid="delete-my-data-button">Delete my data</Button></AlertDialogTrigger>
           <AlertDialogContent>

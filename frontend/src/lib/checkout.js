@@ -22,7 +22,7 @@ export function useCheckout() {
       const o = await api("post", "/billing/checkout", { plan_id: plan.id, cycle });
       await new Promise((resolve) => {
         const rz = new window.Razorpay({
-          key: o.key_id, order_id: o.order_id, amount: o.amount, currency: o.currency, name: "RivalCard",
+          key: o.key_id, order_id: o.order_id, amount: o.amount, currency: o.currency, name: "FlexoCards",
           description: `${o.plan_name} · ${cycle === "year" ? "12 months" : "1 month"}`, prefill: { email: o.email, name: o.name },
           theme: { color: "#D4AF37" },
           handler: async (r) => {

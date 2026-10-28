@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { Link } from "react-router-dom";
 import { toPng } from "html-to-image";
 import { toast } from "sonner";
-import { Download, Share2, Loader2, Save, Copy } from "lucide-react";
+import { Download, Share2, Loader2, Save, Copy, Globe, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PlayerCard, StoryCard } from "@/components/card/PlayerCard";
@@ -24,7 +24,7 @@ function download(url, name) {
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
 }
 
-export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, onChooseTemplate, onNewCard }) {
+export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, onChooseTemplate, onNewCard, canSave = true, isPaid, ensureSaved, onExported }) {
   const api = useApi();
   const { refreshMe } = useAppData();
   const cardRef = useRef(null);
@@ -34,6 +34,23 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
   const [busy, setBusy] = useState("");
   const [result, setResult] = useState(null);
   const [premium, setPremium] = useState("");
+  const [link, setLink] = useState("");
+  const [linkBusy, setLinkBusy] = useState(false);
+
+  const makePublic = async () => {
+    if (!isPaid) return setPremium("Public share links are part of paid plans. Upgrade to Basic or higher to get a link anyone can open.");
+    setLinkBusy(true);
+    try {
+      const id = await ensureSaved();
+      if (!id) return;
+      const r = await api("post", `/me/cards/${id}/share`, { image: result.url });
+      const url = `${window.location.origin}/c/${r.share_id}`;
+      setLink(url);
+      navigator.clipboard?.writeText(url).then(() => toast.success("Public link copied")).catch(() => {});
+    } catch (e) {
+      if (e?.response?.status === 402) setPremium(errMsg(e)); else toast.error(errMsg(e));
+    } finally { setLinkBusy(false); }
+  };
 
   const render = async (format) => {
     const res = await api("post", "/cards/export", { sport_id: sport.id, template_id: template.id, format, request_id: newRequestId(), features_used: featuresUsed(state.photo) });
@@ -49,7 +66,7 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
       created.current = true;
       api("post", "/events", { type: "card_created", sport_id: sport.id, template_id: template.id }).catch(() => {});
     }
-    return { url, format, name: `${slug(state.data.name)}-${format}-rivalcard.png` };
+    return { url, format, name: `${slug(state.data.name)}-${format}-flexocards.png` };
   };
 
   const run = async (format, mode) => {
@@ -60,6 +77,8 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
     try {
       const r = await render(format);
       setResult(r);
+      setLink("");
+      onExported?.();
       if (mode === "share") await shareResult(r);
       else { download(r.url, r.name); toast.success(`${format === "story" ? "Story" : "Card"} PNG downloaded`); }
     } catch (e) {
@@ -71,7 +90,7 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
   const shareResult = async (r) => {
     const file = await dataUrlToFile(r.url, r.name);
     if (navigator.canShare?.({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: "My player card", text: "Made with RivalCard" }); return; }
+      try { await navigator.share({ files: [file], title: "My player card", text: "Made with FlexoCards" }); return; }
       catch (e) { if (e.name === "AbortError") return; }
     }
     download(r.url, r.name);
@@ -92,7 +111,7 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
         <B format="story" mode="download" icon={Download} label="Story PNG" />
         <B format="story" mode="share" icon={Share2} label="Share" />
         {isSignedIn ? (
-          <Button variant="outline" onClick={onSave} disabled={saving} data-testid="save-card-button" className="rounded-full hover:bg-accent hover:text-foreground"><Save className="w-4 h-4 mr-1" />{saving ? "Saving…" : "Save"}</Button>
+          <Button variant="outline" onClick={onSave} disabled={saving || !canSave} data-testid="save-card-button" className="rounded-full hover:bg-accent hover:text-foreground"><Save className="w-4 h-4 mr-1" />{saving ? "Saving…" : "Save"}</Button>
         ) : (
           <Button asChild variant="ghost" className="rounded-full" data-testid="sign-in-to-save-link"><Link to="/sign-in">Sign in to save</Link></Button>
         )}
@@ -113,7 +132,16 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
           <div className="grid grid-cols-2 gap-2">
             <Button data-testid="result-download-button" onClick={() => download(result.url, result.name)} className="rounded-full font-bold hover:bg-amber-400 hover:text-slate-950"><Download className="w-4 h-4 mr-1" />Download PNG</Button>
             <Button data-testid="result-share-button" variant="outline" onClick={() => shareResult(result)} className="rounded-full"><Share2 className="w-4 h-4 mr-1" />Share</Button>
-            <Button data-testid="result-edit-button" variant="ghost" onClick={() => setResult(null)} className="rounded-full">Edit card</Button>
+            <Button data-testid="result-public-link-button" variant="outline" onClick={makePublic} disabled={linkBusy} className="rounded-full col-span-2">
+              {linkBusy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : isPaid ? <Globe className="w-4 h-4 mr-1" /> : <Lock className="w-4 h-4 mr-1" />}
+              {isPaid ? "Get public share link" : "Public link · paid plans"}</Button>
+            {link && (
+              <div className="col-span-2 flex gap-2" data-testid="public-link-box">
+                <input readOnly value={link} className="flex-1 min-w-0 h-9 rounded-full border border-border bg-muted px-3 text-xs font-mono" data-testid="public-link-input" />
+                <Button size="sm" variant="outline" className="rounded-full" onClick={() => navigator.clipboard?.writeText(link).then(() => toast.success("Copied"))} data-testid="public-link-copy-button"><Copy className="w-4 h-4" /></Button>
+              </div>
+            )}
+            <Button data-testid="result-edit-button" variant="ghost" onClick={() => setResult(null)} className="rounded-full">Back to card</Button>
             <Button data-testid="result-another-template-button" variant="ghost" onClick={() => { setResult(null); onChooseTemplate(); }} className="rounded-full">Another template</Button>
             <Button data-testid="result-new-card-button" variant="ghost" onClick={() => { setResult(null); onNewCard(); }} className="rounded-full col-span-2">Create another card</Button>
           </div>
@@ -123,7 +151,7 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
             <p><b>Instagram Story:</b> open Instagram → swipe right or tap + → Story → choose the image.</p>
             <p>Use the <b>Story PNG</b> for a perfect 9:16 fit.</p>
             <button data-testid="copy-site-link-button" className="inline-flex items-center gap-1 text-amber-500 hover:underline mt-1" onClick={() => navigator.clipboard?.writeText(window.location.origin).then(() => toast.success("Link copied"))}>
-              <Copy className="w-3 h-3" /> Copy RivalCard link to invite teammates</button>
+              <Copy className="w-3 h-3" /> Copy FlexoCards link to invite teammates</button>
           </div>
         </DialogContent>
       </Dialog>

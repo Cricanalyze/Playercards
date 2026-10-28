@@ -78,6 +78,31 @@
     }
 }
 
+.protect { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-user-drag: none; }
+.protect img { pointer-events: none; }
+.protect { transition: filter .2s ease; }
+.guard-hidden .protect { filter: blur(28px) brightness(.35); }
+@media print {
+    body * { visibility: hidden !important; }
+    body::after { content: "Printing is disabled on FlexoCards."; visibility: visible; position: fixed; inset: 0; display: grid; place-items: center; font-size: 24px; }
+}
+
+.prose-blog { font-size: 1.05rem; line-height: 1.8; overflow-wrap: anywhere; }
+.prose-blog > * + * { margin-top: 1.1em; }
+.prose-blog h1, .prose-blog h2, .prose-blog h3 { font-family: "Barlow Condensed", "DM Sans", sans-serif; font-weight: 800; text-transform: uppercase; line-height: 1.05; margin-top: 1.8em; }
+.prose-blog h1 { font-size: 2.2rem; } .prose-blog h2 { font-size: 1.8rem; } .prose-blog h3 { font-size: 1.4rem; }
+.prose-blog a { color: #f59e0b; text-decoration: underline; text-underline-offset: 3px; }
+.prose-blog ul { list-style: disc; padding-left: 1.4em; } .prose-blog ol { list-style: decimal; padding-left: 1.4em; }
+.prose-blog li + li { margin-top: .35em; }
+.prose-blog blockquote { border-left: 3px solid #f59e0b; padding-left: 1em; font-style: italic; opacity: .85; }
+.prose-blog img { border-radius: 14px; width: 100%; height: auto; }
+.prose-blog code { font-family: "JetBrains Mono", monospace; font-size: .85em; background: hsl(var(--muted)); padding: .15em .4em; border-radius: 6px; }
+.prose-blog pre { background: hsl(var(--muted)); padding: 1em; border-radius: 12px; overflow-x: auto; }
+.prose-blog pre code { background: none; padding: 0; }
+.prose-blog hr { border-color: hsl(var(--border)); margin: 2em 0; }
+.prose-blog table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
+.prose-blog th, .prose-blog td { border: 1px solid hsl(var(--border)); padding: .5em .8em; text-align: left; }
+
 @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
 .rise { animation: rise .7s cubic-bezier(.2,.7,.2,1) both; }
 @keyframes floaty { 0%,100% { transform: translateY(0) rotate(var(--r,0deg)); } 50% { transform: translateY(-10px) rotate(var(--r,0deg)); } }

@@ -37,7 +37,7 @@ export const StoryCard = forwardRef(({ template, sport, data, photo, watermark =
           <div style={{ fontSize: 11, color: "#E2E8F0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>★ {data.achievements.slice(0, 2).join("  ★ ")}</div>
         )}
         {data.show.social && data.social && <div style={{ fontFamily: M, fontSize: 11, marginTop: 6, color: a }}>{data.social.slice(0, 30)}</div>}
-        {watermark && <div style={{ fontFamily: M, fontSize: 8, letterSpacing: 3, marginTop: 8, color: "rgba(255,255,255,.55)" }}>MADE WITH RIVALCARD</div>}
+        {watermark && <div style={{ fontFamily: M, fontSize: 8, letterSpacing: 3, marginTop: 8, color: "rgba(255,255,255,.55)" }}>MADE WITH FLEXOCARDS</div>}
       </div>
     </div>
   );
@@ -48,7 +48,7 @@ export function ScaledCard({ width, format = "card", className = "", ...props })
   const s = width / CARD_W;
   const Comp = format === "story" ? StoryCard : PlayerCard;
   return (
-    <div className={className} style={{ width, height: h * s, position: "relative" }}>
+    <div className={`protect ${className}`} style={{ width, height: h * s, position: "relative" }}>
       <div style={{ transform: `scale(${s})`, transformOrigin: "top left", width: CARD_W, height: h }}>
         <Comp {...props} />
       </div>

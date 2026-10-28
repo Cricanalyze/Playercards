@@ -48,7 +48,7 @@ def _ent(**kw):
 PLANS = [
     {"id": "free", "name": "Free", "type": "free", "price_month": 0, "price_year": 0, "cards_per_month": 2, "order": 0,
      "description": "Make your first cards with every photo-editing tool.",
-     "features": ["2 card downloads a month", "Free template collection", "Crop, zoom, rotate & adjust photos", "Standard backgrounds", "Small RivalCard watermark"],
+     "features": ["2 card downloads a month", "Free template collection", "Crop, zoom, rotate & adjust photos", "Standard backgrounds", "Small FlexoCards watermark"],
      "terms": "Free forever. No payment needed.", "entitlements": _ent()},
     {"id": "basic", "name": "Basic", "type": "subscription", "price_month": 18, "price_year": 180, "cards_per_month": 5, "order": 1,
      "description": "More cards, Basic templates and background removal.",

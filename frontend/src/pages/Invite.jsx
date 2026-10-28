@@ -30,7 +30,7 @@ export default function Invite() {
       {err && <p className="text-destructive mt-4" data-testid="invite-error">{err}</p>}
       {inv && (
         <div className="mt-4 space-y-4">
-          <p className="text-muted-foreground">You've been invited to join the RivalCard team as <b className="text-foreground uppercase">{inv.role.replace("_", " ")}</b>. It's for <b className="text-foreground">{inv.email_hint}</b> and expires {fmtDateTime(inv.expires_at)}.</p>
+          <p className="text-muted-foreground">You've been invited to join the FlexoCards team as <b className="text-foreground uppercase">{inv.role.replace("_", " ")}</b>. It's for <b className="text-foreground">{inv.email_hint}</b> and expires {fmtDateTime(inv.expires_at)}.</p>
           {inv.status !== "pending" ? <p className="text-destructive" data-testid="invite-status">This invitation is {inv.status}.</p> : (
             <>
               <Show when="signed-out">

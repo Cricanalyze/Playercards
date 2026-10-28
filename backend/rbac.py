@@ -16,6 +16,7 @@ PERMISSIONS = {
     "moderation.manage": "Review moderation reports",
     "audit.view": "View audit logs",
     "admins.manage": "Invite admins & change roles",
+    "blog.manage": "Publish blog posts & manage blog authors",
 }
 ALL_PERMS = list(PERMISSIONS)
 
