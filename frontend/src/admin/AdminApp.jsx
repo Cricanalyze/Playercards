@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, Link } from "react-router-dom";
 import { Show, UserButton } from "@clerk/react";
-import { BarChart3, Users, CreditCard, Package, Trophy, LayoutTemplate, ShieldCheck, ScrollText, Flag, ArrowLeft, Newspaper, Settings as SettingsIcon } from "lucide-react";
+import { BarChart3, Users, CreditCard, Package, Trophy, LayoutTemplate, ShieldCheck, ScrollText, Flag, ArrowLeft, Newspaper, Settings as SettingsIcon, Ticket } from "lucide-react";
+import Coupons from "./Coupons";
 import Blog from "./Blog";
 import SettingsPage from "./Settings";
 import { useApi, errMsg } from "@/lib/api";
@@ -31,6 +32,7 @@ const NAV = [
   ["audit", "Audit log", ScrollText, "audit.view", Audit],
   ["reports", "Reports", Flag, "moderation.manage", Reports],
   ["blog", "Blog", Newspaper, "blog.manage", Blog],
+  ["coupons", "Coupons", Ticket, "plans.manage", Coupons],
   ["settings", "Settings", SettingsIcon, "settings.manage", SettingsPage],
 ];
 

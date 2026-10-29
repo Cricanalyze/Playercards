@@ -1,6 +1,9 @@
 import { useAppData } from "@/context/AppData";
 import { PricingGrid } from "@/components/PricingGrid";
 import { PaidHighlights } from "@/components/PaidHighlights";
+import { useState } from "react";
+import { CheckoutExtras } from "@/lib/checkout";
+import { CheckoutOptions, TopUps } from "@/components/Store";
 
 const TERMS = [
   ["Monthly vs yearly", "Monthly gives 1 month of access; yearly gives 12 months for the price of 10. Plans don't auto-renew — renew or switch any time."],
@@ -13,12 +16,16 @@ const TERMS = [
 
 export default function Pricing() {
   const { plans } = useAppData();
+  const [extras, setExtras] = useState({ coupon: "", billing: {} });
   return (
+    <CheckoutExtras.Provider value={extras}>
     <div className="container-x py-12" data-testid="pricing-page">
       <p className="eyebrow">Plans in INR</p>
       <h1 className="font-display font-black uppercase text-4xl sm:text-5xl lg:text-6xl">Simple, fair pricing</h1>
       <p className="text-muted-foreground mt-3 max-w-xl">Basic card creation is free forever. Prices below come directly from our plan settings.</p>
-      <div className="mt-10"><PricingGrid plans={plans} /></div>
+      <CheckoutOptions extras={extras} setExtras={setExtras} />
+      <div className="mt-8"><PricingGrid plans={plans} /></div>
+      <TopUps />
       <PaidHighlights />
       <div className="mt-16 grid md:grid-cols-2 gap-6">
         {TERMS.map(([t, d]) => (
@@ -26,5 +33,6 @@ export default function Pricing() {
         ))}
       </div>
     </div>
+    </CheckoutExtras.Provider>
   );
 }

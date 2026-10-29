@@ -10,6 +10,7 @@ import { PageHead } from "./AdminApp";
 import { ClerkEmails, TemplatesPreview, SocialSettings } from "./SettingsExtra";
 import { SiteModeSettings } from "./SiteMode";
 import { DatabaseSettings } from "./DatabaseSettings";
+import { StoreSettings, InvoiceSettings } from "./StoreSettings";
 import { AdminSkeleton } from "@/components/Skeletons";
 
 const F = ({ label, hint, children }) => (
@@ -138,6 +139,8 @@ export default function Settings() {
       <PageHead title="Settings" sub="Site status, payments, email, sign-in emails and social links. Only Super Admins can see this page." />
       <SiteModeSettings key={`m${v}`} data={d.site} status={d.site_status} onSaved={(r) => setD({ ...d, site: r.site, site_status: r.status })} />
       <DatabaseSettings data={d.database} onChange={(db) => setD({ ...d, database: db })} />
+      <StoreSettings key={`st${v}`} data={d.store} onSaved={(r) => setD({ ...d, store: r })} />
+      <InvoiceSettings key={`iv${v}`} data={d.invoice} onSaved={(r) => setD({ ...d, invoice: r })} />
       <RazorpaySettings key={`r${v}`} data={d.razorpay} onSaved={(r) => setD({ ...d, razorpay: r })} onReset={() => reset("razorpay")} />
       <EmailSettings key={`e${v}`} data={d.email} onSaved={(r) => (r ? setD({ ...d, email: r }) : load())} onReset={() => reset("email")} />
       <ClerkEmails key={`c${v}`} data={d.clerk} onSaved={(r) => setD({ ...d, clerk: r })} onReset={() => reset("clerk")} />

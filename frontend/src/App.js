@@ -37,6 +37,7 @@ import Storybook from "@/pages/Storybook";
 import ScreenGuard from "@/components/ScreenGuard";
 import SiteGate from "@/components/site/SiteGate";
 import { SiteStatusProvider } from "@/context/SiteStatus";
+import { ReferralCapture } from "@/components/Referral";
 
 const ScrollTop = () => {
   const { pathname, hash } = useLocation();
@@ -71,6 +72,7 @@ function App() {
             <SiteStatusProvider>
             <ScrollTop />
             <ScreenGuard />
+            <ReferralCapture />
             <SiteGate>
             <Routes>
               <Route element={<PublicShell />}>

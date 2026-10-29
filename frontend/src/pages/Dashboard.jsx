@@ -9,6 +9,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useAppData } from "@/context/AppData";
 import { useApi, errMsg, fmtDate, fmtDateTime, inr } from "@/lib/api";
 import { PageSkeleton, ListSkeleton } from "@/components/Skeletons";
+import { downloadInvoicePdf } from "@/lib/invoicePdf";
+import { ReferralCard } from "@/components/Referral";
 
 function Inner() {
   const { me, meError, sports, templates, refreshMe } = useAppData();
@@ -21,6 +23,7 @@ function Inner() {
   if (!me) return <PageSkeleton variant="dashboard" />;
   const { member, entitlements: ent, subscriptions, payments } = me;
   const del = async (id) => { try { await api("delete", `/me/cards/${id}`); toast.success("Card deleted"); load(); } catch (e) { toast.error(errMsg(e)); } };
+  const invoice = async (p) => { try { downloadInvoicePdf(await api("get", `/me/payments/${p.id}/invoice`)); } catch (e) { toast.error(errMsg(e)); } };
   const unshare = async (id) => { try { await api("delete", `/me/cards/${id}/share`); toast.success("Public link turned off"); load(); } catch (e) { toast.error(errMsg(e)); } };
   const deleteMe = async () => { try { await api("delete", "/me"); toast.success("Your data was deleted."); refreshMe(); } catch (e) { toast.error(errMsg(e)); } };
 
@@ -45,8 +48,9 @@ function Inner() {
           <p className="font-display font-black uppercase text-3xl mt-2 flex items-center gap-2" data-testid="dashboard-plan-name">{ent.plan_id !== "free" && <Crown className="w-6 h-6 text-amber-500" />}{ent.plan_name}</p>
           {ent.subscription && <p className="text-xs text-muted-foreground" data-testid="dashboard-plan-expiry">{ent.subscription.cycle === "year" ? "Yearly" : "Monthly"} · {ent.subscription.source === "payment" ? "paid" : ent.subscription.source} · expires {fmtDate(ent.subscription.end_at)}</p>}
           <div className="mt-4">
-            <div className="flex justify-between text-sm"><span>Card credits</span><b data-testid="dashboard-credits">{ent.cards_remaining} / {ent.cards_per_month} left</b></div>
-            <div className="h-2 bg-muted rounded-full mt-1"><div className="h-2 bg-amber-500 rounded-full" style={{ width: `${ent.cards_per_month ? (ent.cards_remaining / ent.cards_per_month) * 100 : 0}%` }} /></div>
+            <div className="flex justify-between text-sm"><span>Card credits</span><b data-testid="dashboard-credits">{ent.monthly_remaining} / {ent.cards_per_month} left</b></div>
+            <div className="h-2 bg-muted rounded-full mt-1"><div className="h-2 bg-amber-500 rounded-full" style={{ width: `${ent.cards_per_month ? (ent.monthly_remaining / ent.cards_per_month) * 100 : 0}%` }} /></div>
+            <p className="text-xs text-muted-foreground mt-2" data-testid="dashboard-wallet">Bonus cards: <b className="text-foreground">{ent.bonus_cards}</b> · No-watermark passes: <b className="text-foreground">{ent.watermark_passes}</b> · <Link to="/pricing#topups" className="text-amber-500 hover:underline">Buy more</Link></p>
             <p className="text-xs text-muted-foreground mt-1" data-testid="dashboard-reset-date">Resets {fmtDate(ent.reset_at)}</p>
           </div>
           <ul className="text-sm text-muted-foreground mt-3 space-y-1">
@@ -72,10 +76,11 @@ function Inner() {
           )}
           <p className="eyebrow mt-6">Billing history</p>
           {payments.length === 0 ? <p className="text-sm text-muted-foreground mt-2">No payments yet.</p>
-            : payments.map((p) => <p key={p.id} className="text-sm" data-testid={`my-payment-${p.id}`}>{fmtDate(p.created_at)} · {p.plan_name} ({p.cycle === "year" ? "yearly" : "monthly"}) · {inr(p.amount_inr)} · <b className="uppercase">{{ created: "pending", authorized: "pending", captured: "paid" }[p.status] || p.status}</b></p>)}
+            : payments.map((p) => <p key={p.id} className="text-sm" data-testid={`my-payment-${p.id}`}>{fmtDate(p.created_at)} · {p.plan_name} ({p.cycle === "year" ? "yearly" : "monthly"}) · {inr(p.amount_inr)} · <b className="uppercase">{{ created: "pending", authorized: "pending", captured: "paid" }[p.status] || p.status}</b>{p.invoice_no && <button onClick={() => invoice(p)} className="ml-2 text-amber-500 hover:underline" data-testid={`invoice-${p.id}`}>Invoice</button>}</p>)}
         </div>
       </div>
 
+      <div className="mb-8"><ReferralCard /></div>
       <div>
         <h2 className="font-display font-black uppercase text-2xl">Saved cards</h2>
         <p className="text-sm text-muted-foreground">Only card details are saved — re-add your photo when you open one. Paid plans can edit a card for 6 hours after creating it.</p>

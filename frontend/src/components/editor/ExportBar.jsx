@@ -24,7 +24,8 @@ function download(url, name) {
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
 }
 
-export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, onChooseTemplate, onNewCard, canSave = true, isPaid, ensureSaved, onExported, storybook }) {
+export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, onChooseTemplate, onNewCard, canSave = true, isPaid, ensureSaved, onExported, storybook, ent }) {
+  const [noWm, setNoWm] = useState(false);
   const api = useApi();
   const { refreshMe } = useAppData();
   const cardRef = useRef(null);
@@ -53,7 +54,7 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
   };
 
   const render = async (format) => {
-    const res = await api("post", "/cards/export", { sport_id: sport.id, template_id: template.id, format, request_id: newRequestId(), features_used: featuresUsed(state.photo) });
+    const res = await api("post", "/cards/export", { sport_id: sport.id, template_id: template.id, format, request_id: newRequestId(), features_used: featuresUsed(state.photo), no_watermark: noWm });
     refreshMe();
     flushSync(() => setWm(res.watermark));
     await document.fonts.ready;
@@ -109,6 +110,13 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
   return (
     <>
       <div className="flex flex-wrap gap-2 justify-center" data-testid="export-bar">
+        {ent && !ent.remove_watermark && (
+          <div className="w-full text-xs flex items-center justify-center gap-2" data-testid="watermark-pass-row">
+            {ent.watermark_passes > 0
+              ? <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={noWm} onChange={(e) => setNoWm(e.target.checked)} data-testid="use-watermark-pass" />Remove watermark (uses 1 of your {ent.watermark_passes} passes)</label>
+              : <a href="/pricing#topups" className="text-amber-500 hover:underline" data-testid="buy-watermark-link">Remove the watermark from ₹5</a>}
+          </div>
+        )}
         <B format="card" mode="download" icon={Download} label="Card PNG" primary />
         <B format="story" mode="download" icon={Download} label="Story PNG" />
         <B format="story" mode="share" icon={Share2} label="Share" />

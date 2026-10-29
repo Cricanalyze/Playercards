@@ -21,6 +21,18 @@ def receipt(plan: str, cycle: str, amount, cards, end: str, payment_id: str):
                ("Cards per month", cards), ("Active until", end), ("Payment ID", payment_id)], "Payment receipt")
 
 
+def purchase(item: str, amount, details: list, payment_id: str):
+    return _t(f"FlexoCards receipt: {item}", "Purchase complete",
+              ["Thanks! Your purchase is ready to use right away.", "Your invoice is available in your dashboard under Payments."],
+              ("Create a card", "/create"), [("Item", item), ("Amount paid", f"₹{amount}"), *details, ("Payment ID", payment_id)], "Payment receipt")
+
+
+def referral_reward(cards: int, friend: str):
+    return _t("You earned free FlexoCards credits", f"+{cards} free cards",
+              [f"{friend or 'A friend'} joined FlexoCards with your invite link, so you both got {cards} bonus card downloads.",
+               "Bonus cards never expire and are used after your monthly credits run out."], ("Create a card", "/create"), eyebrow="Referral reward")
+
+
 def admin_invite(inviter: str, role: str, expires: str, token: str):
     return _t("You're invited to the FlexoCards admin team", "Join the admin team",
               [f"{inviter or 'A FlexoCards admin'} invited you to help run FlexoCards.",

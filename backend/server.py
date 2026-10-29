@@ -213,6 +213,7 @@ async def get_entitlements(member: Optional[dict]) -> dict:
                 plan, sub = p, s
     period, reset_at = period_of()
     used = (await db.usage.find_one({"user_id": member["user_id"], "period": period}, NOFIELDS) or {}) if member else {}
+    wallet = (await db.users.find_one({"user_id": member["user_id"]}, {"_id": 0, "bonus_cards": 1, "watermark_passes": 1}) or {}) if member else {}
     e = plan["entitlements"]
     cards_used, bg_used = used.get("cards", 0), used.get("bg_removals", 0)
     return {
@@ -220,7 +221,9 @@ async def get_entitlements(member: Optional[dict]) -> dict:
         "subscription": sub and {k: sub.get(k) for k in ("id", "status", "source", "cycle", "start_at", "end_at")},
         "sources": [{"plan": plan["name"], "source": sub["source"], "end_at": sub.get("end_at")}] if sub else [],
         "cards_per_month": plan["cards_per_month"], "cards_used": cards_used,
-        "cards_remaining": max(0, plan["cards_per_month"] - cards_used),
+        "cards_remaining": max(0, plan["cards_per_month"] - cards_used) + wallet.get("bonus_cards", 0),
+        "monthly_remaining": max(0, plan["cards_per_month"] - cards_used),
+        "bonus_cards": wallet.get("bonus_cards", 0), "watermark_passes": wallet.get("watermark_passes", 0),
         "bg_removal_limit": e.get("bg_removal_limit", 0) if e.get("bg_removal") else 0, "bg_removals_used": bg_used,
         "bg_removals_remaining": max(0, (e.get("bg_removal_limit", 0) if e.get("bg_removal") else 0) - bg_used),
         "period": period, "reset_at": iso(reset_at), "features": e,
@@ -308,6 +311,10 @@ async def prepare_db():
     await db.saved_cards.create_index("share.id", sparse=True)
     await db.files.create_index("storage_path")
     await db.storybook_pages.create_index([("user_id", 1), ("created_at", 1)])
+    await db.referrals.create_index("referee_id", unique=True)
+    await db.referrals.create_index("referrer_id")
+    await db.coupons.create_index("code", unique=True)
+    await db.users.create_index("ref_code", sparse=True)
 
 
 # ---------- public ----------
@@ -356,6 +363,7 @@ class ExportIn(BaseModel):
     format: str = Field(pattern="^(card|story)$")
     request_id: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
     features_used: List[str] = Field(default_factory=list, max_length=10)
+    no_watermark: bool = False
 
 
 def upgrade_error(msg: str, need: str = ""):
@@ -377,17 +385,36 @@ async def authorize_export(body: ExportIn, request: Request):
     for f in body.features_used:
         if f in FEATURE_LABELS and not ent["features"].get(f):
             upgrade_error(f"{FEATURE_LABELS[f]} is not included in your {ent['plan_name']} plan. Remove it or upgrade.", f)
+    use_pass = body.no_watermark and not ent["remove_watermark"]
+    if use_pass and ent["watermark_passes"] < 1:
+        upgrade_error("You have no watermark-free passes left. Buy one on the Pricing page or upgrade.", "watermark")
     r = await consume(member, "cards", body.request_id, ent["cards_per_month"],
                       {"template_id": body.template_id, "sport_id": body.sport_id, "format": body.format})
+    if r.get("denied"):
+        r = await use_wallet(member, "bonus_cards", f"bonus:{body.request_id}")
     if r.get("denied"):
         upgrade_error(f"You've used all {ent['cards_per_month']} card downloads in your {ent['plan_name']} plan this month. "
                       f"Credits reset on {period_of()[1].strftime('%d %b %Y')}, or upgrade for more.", "credits")
     if r.get("ok"):
         await db.events.insert_one({"id": new_id(), "type": "card_downloaded", "sport_id": body.sport_id,
                                     "template_id": body.template_id, "format": body.format, "user_id": member["user_id"], "at": iso()})
+    if use_pass and not r.get("duplicate"):
+        use_pass = not (await use_wallet(member, "watermark_passes", f"wm:{body.request_id}")).get("denied")
     ent = await get_entitlements(member)
-    return {"allowed": True, "watermark": not ent["remove_watermark"], "cards_remaining": ent["cards_remaining"],
+    return {"allowed": True, "watermark": not (ent["remove_watermark"] or use_pass), "cards_remaining": ent["cards_remaining"],
             "duplicate": bool(r.get("duplicate"))}
+
+
+async def use_wallet(member: dict, field: str, key: str) -> dict:
+    try:
+        await db.usage_events.insert_one({"key": f"{member['user_id']}:{key}", "user_id": member["user_id"], "kind": field, "at": iso()})
+    except DuplicateKeyError:
+        return {"duplicate": True}
+    r = await db.users.find_one_and_update({"user_id": member["user_id"], field: {"$gte": 1}}, {"$inc": {field: -1}})
+    if r is None:
+        await db.usage_events.delete_one({"key": f"{member['user_id']}:{key}"})
+        return {"denied": True}
+    return {"ok": True}
 
 
 class ToolIn(BaseModel):
@@ -464,9 +491,63 @@ async def billing_config():
             "mode": "test" if kid.startswith("rzp_test_") else "live" if kid else "not_configured"}
 
 
+class BillingInfo(BaseModel):
+    name: str = Field(default="", max_length=120)
+    gstin: str = Field(default="", pattern=r"^$|^[0-9]{2}[A-Z0-9]{13}$")
+    state: str = Field(default="", max_length=40)
+
+
 class CheckoutIn(BaseModel):
-    plan_id: str = Field(max_length=60)
-    cycle: str = Field(pattern="^(month|year)$")
+    kind: str = Field(default="plan", pattern="^(plan|pack|watermark)$")
+    plan_id: str = Field(default="", max_length=60)
+    cycle: str = Field(default="month", pattern="^(month|year)$")
+    item_id: str = Field(default="", max_length=40)
+    coupon: str = Field(default="", max_length=30)
+    billing: BillingInfo = Field(default_factory=BillingInfo)
+
+
+async def price_item(body: CheckoutIn) -> dict:
+    st = settings_store.get("store")
+    if body.kind == "plan":
+        plan = await db.plans.find_one({"id": body.plan_id, "active": True}, NOFIELDS)
+        if not plan or plan["type"] == "free":
+            raise HTTPException(400, "Choose an available paid plan.")
+        amount = plan["price_month"] if body.cycle == "month" else plan["price_year"]
+        return {"amount": amount, "label": f"{plan['name']} plan ({'monthly' if body.cycle == 'month' else 'yearly'})", "plan": plan}
+    if body.kind == "pack":
+        pk = next((p for p in st["packs"] if p["id"] == body.item_id), None)
+        if not pk:
+            raise HTTPException(400, "Choose an available card pack.")
+        return {"amount": pk["price"], "label": f"{pk['cards']} extra cards", "qty": pk["cards"]}
+    qty = st["wm_bundle_qty"] if body.item_id == "bundle" else 1
+    return {"amount": st["wm_bundle_price"] if qty > 1 else st["wm_price"], "label": f"{qty} watermark-free download{'s' if qty > 1 else ''}", "qty": qty}
+
+
+async def apply_coupon(code: str, body: CheckoutIn, amount: float, member: dict) -> dict:
+    c = await db.coupons.find_one({"code": code.strip().upper(), "active": True}, NOFIELDS)
+    if not c:
+        raise HTTPException(400, "This coupon code isn't valid.")
+    if c.get("expires_at") and now() > datetime.fromisoformat(c["expires_at"]):
+        raise HTTPException(400, "This coupon has expired.")
+    if c.get("max_uses") and c.get("uses", 0) >= c["max_uses"]:
+        raise HTTPException(400, "This coupon has been fully used.")
+    if c.get("applies_to", "all") not in ("all", "plans" if body.kind == "plan" else "extras"):
+        raise HTTPException(400, f"This coupon only works on {'plans' if c['applies_to'] == 'plans' else 'card packs and watermark passes'}.")
+    if c.get("once_per_user") and await db.payments.find_one({"user_id": member["user_id"], "coupon": c["code"], "status": "captured"}):
+        raise HTTPException(400, "You've already used this coupon.")
+    off = round(amount * c["value"] / 100, 2) if c["type"] == "percent" else float(c["value"])
+    final = max(1.0, round(amount - off, 2))
+    return {"code": c["code"], "discount": round(amount - final, 2), "final": final}
+
+
+@api.post("/billing/quote")
+async def billing_quote(body: CheckoutIn, member: dict = Depends(current_member)):
+    it = await price_item(body)
+    q = {"amount": it["amount"], "label": it["label"], "final": it["amount"], "discount": 0, "coupon": ""}
+    if body.coupon.strip():
+        cp = await apply_coupon(body.coupon, body, it["amount"], member)
+        q.update(final=cp["final"], discount=cp["discount"], coupon=cp["code"])
+    return q
 
 
 @api.post("/billing/checkout")
@@ -475,21 +556,26 @@ async def checkout(body: CheckoutIn, request: Request, member: dict = Depends(cu
     kid, sec = rzp_keys()
     if not (kid and sec):
         raise HTTPException(503, "Online payments are pending setup. Please try again later.")
-    plan = await db.plans.find_one({"id": body.plan_id, "active": True}, NOFIELDS)
-    if not plan or plan["type"] == "free":
-        raise HTTPException(400, "Choose an available paid plan.")
-    amount = plan["price_month"] if body.cycle == "month" else plan["price_year"]
+    it = await price_item(body)
+    amount, cp = it["amount"], None
     if amount < 1:
-        raise HTTPException(400, "This plan has no price set.")
+        raise HTTPException(400, "This item has no price set.")
+    if body.coupon.strip():
+        cp = await apply_coupon(body.coupon, body, amount, member)
+    final = cp["final"] if cp else amount
+    plan = it.get("plan")
     pid = new_id()
-    order = rzp("POST", "/orders", json={"amount": int(round(amount * 100)), "currency": "INR", "receipt": pid[:40],
-                                         "notes": {"user_id": member["user_id"], "plan_id": plan["id"], "cycle": body.cycle}})
-    await db.payments.insert_one({"id": pid, "user_id": member["user_id"], "user_email": member.get("email"), "plan_id": plan["id"],
-                                  "plan_name": plan["name"], "cycle": body.cycle, "amount_inr": amount, "currency": "INR",
+    order = rzp("POST", "/orders", json={"amount": int(round(final * 100)), "currency": "INR", "receipt": pid[:40],
+                                         "notes": {"user_id": member["user_id"], "kind": body.kind, "item": body.plan_id or body.item_id}})
+    await db.payments.insert_one({"id": pid, "user_id": member["user_id"], "user_email": member.get("email"), "kind": body.kind,
+                                  "plan_id": plan["id"] if plan else None, "plan_name": plan["name"] if plan else it["label"], "item_label": it["label"],
+                                  "qty": it.get("qty"), "cycle": body.cycle if plan else None, "list_price_inr": amount,
+                                  "coupon": cp["code"] if cp else None, "discount_inr": cp["discount"] if cp else 0, "amount_inr": final,
+                                  "billing": body.billing.model_dump(), "currency": "INR",
                                   "gateway": "razorpay", "order_id": order["id"], "status": "created", "created_at": iso(),
                                   "history": [{"at": iso(), "event": "order_created"}]})
     return {"payment_id": pid, "order_id": order["id"], "amount": order["amount"], "currency": "INR", "key_id": kid,
-            "plan_name": plan["name"], "cycle": body.cycle, "email": member.get("email"), "name": member.get("name")}
+            "plan_name": plan["name"] if plan else it["label"], "label": it["label"], "cycle": body.cycle, "email": member.get("email"), "name": member.get("name")}
 
 
 async def activate_payment(pay: dict, rzp_payment_id: str, via: str):
@@ -498,6 +584,17 @@ async def activate_payment(pay: dict, rzp_payment_id: str, via: str):
         {"$set": {"status": "captured", "razorpay_payment_id": rzp_payment_id, "paid_at": iso()},
          "$push": {"history": {"at": iso(), "event": "captured", "via": via}}}, return_document=ReturnDocument.AFTER)
     if not r:
+        return
+    seq = await db.counters.find_one_and_update({"_id": "invoice"}, {"$inc": {"n": 1}}, upsert=True, return_document=ReturnDocument.AFTER)
+    inv = settings_store.get("invoice")
+    await db.payments.update_one({"id": pay["id"]}, {"$set": {"invoice_no": f"{inv['prefix']}-{now().year}-{seq['n']:05d}"}})
+    if pay.get("coupon"):
+        await db.coupons.update_one({"code": pay["coupon"]}, {"$inc": {"uses": 1}})
+    if pay.get("kind") in ("pack", "watermark"):
+        field = "bonus_cards" if pay["kind"] == "pack" else "watermark_passes"
+        await db.users.update_one({"user_id": pay["user_id"]}, {"$inc": {field: int(pay["qty"])}})
+        if pay.get("user_email"):
+            notify(pay["user_email"], ET.purchase(pay["item_label"], pay["amount_inr"], [("Added", f"{pay['qty']} {'cards' if pay['kind'] == 'pack' else 'passes'}")], rzp_payment_id), "receipt")
         return
     plan = await db.plans.find_one({"id": pay["plan_id"]}, NOFIELDS)
     delta = relativedelta(months=1) if pay["cycle"] == "month" else relativedelta(years=1)
@@ -1716,7 +1813,8 @@ def _email_view() -> dict:
 @admin.get("/settings")
 async def admin_settings(member: dict = Depends(require_perm("settings.manage"))):
     logs = await db.email_log.find({}, NOFIELDS).sort("created_at", -1).limit(15).to_list(15)
-    return {"razorpay": _rzp_view(), "email": _email_view(), "email_log": logs, "clerk": _clerk_view(), "database": await _db_view(), "site": settings_store.get("site"), "site_status": site_status(),
+    return {"store": settings_store.get("store"), "invoice": settings_store.get("invoice"),
+            "razorpay": _rzp_view(), "email": _email_view(), "email_log": logs, "clerk": _clerk_view(), "database": await _db_view(), "site": settings_store.get("site"), "site_status": site_status(),
             "social": settings_store.get("social"), "templates": [{"id": k, "label": v[0]} for k, v in ET.SAMPLES.items()]}
 
 
@@ -2062,6 +2160,179 @@ async def delete_story_page(page_id: str, member: dict = Depends(current_member)
         raise HTTPException(404, "Page not found")
     await db.files.update_one({"storage_path": p["image_path"]}, {"$set": {"is_deleted": True}})
     return {"ok": True}
+
+
+# ---------- coupons ----------
+class CouponIn(BaseModel):
+    code: str = Field(pattern=r"^[A-Za-z0-9_-]{3,30}$")
+    type: str = Field(pattern="^(percent|flat)$")
+    value: float = Field(gt=0, le=100000)
+    applies_to: str = Field(default="all", pattern="^(all|plans|extras)$")
+    max_uses: int = Field(default=0, ge=0, le=1000000)
+    once_per_user: bool = True
+    expires_at: str = Field(default="", max_length=40)
+    active: bool = True
+
+
+@admin.get("/coupons")
+async def admin_coupons(member: dict = Depends(require_perm("plans.manage"))):
+    return await db.coupons.find({}, NOFIELDS).sort("created_at", -1).to_list(500)
+
+
+@admin.post("/coupons")
+async def admin_coupon_save(body: CouponIn, member: dict = Depends(require_perm("plans.manage"))):
+    if body.type == "percent" and body.value > 100:
+        raise HTTPException(400, "A percent discount can't be more than 100.")
+    if body.expires_at and not _dt(body.expires_at):
+        raise HTTPException(400, "Enter a valid expiry date.")
+    d = {**body.model_dump(), "code": body.code.upper()}
+    await db.coupons.update_one({"code": d["code"]}, {"$set": d, "$setOnInsert": {"uses": 0, "created_at": iso(), "id": new_id()}}, upsert=True)
+    await audit(member, "coupon.saved", d["code"], {k: d[k] for k in ("type", "value", "applies_to", "max_uses", "active")})
+    return await db.coupons.find_one({"code": d["code"]}, NOFIELDS)
+
+
+@admin.delete("/coupons/{code}")
+async def admin_coupon_delete(code: str, member: dict = Depends(require_perm("plans.manage"))):
+    await db.coupons.delete_one({"code": code.upper()})
+    await audit(member, "coupon.deleted", code.upper())
+    return {"ok": True}
+
+
+# ---------- store / invoice settings ----------
+class PackIn(BaseModel):
+    id: str = Field(pattern=r"^[a-z0-9_-]{2,20}$")
+    cards: int = Field(ge=1, le=1000)
+    price: float = Field(ge=1, le=100000)
+
+
+class StoreIn(BaseModel):
+    packs: List[PackIn] = Field(max_length=6)
+    wm_price: float = Field(ge=1, le=10000)
+    wm_bundle_qty: int = Field(ge=2, le=100)
+    wm_bundle_price: float = Field(ge=1, le=100000)
+    ref_enabled: bool = True
+    ref_reward_cards: int = Field(ge=0, le=50)
+    ref_max_rewards: int = Field(ge=0, le=10000)
+
+
+@api.get("/store")
+async def store_public():
+    st = settings_store.get("store")
+    return {k: st[k] for k in ("packs", "wm_price", "wm_bundle_qty", "wm_bundle_price", "ref_enabled", "ref_reward_cards")}
+
+
+@admin.put("/settings/store")
+async def admin_set_store(body: StoreIn, member: dict = Depends(require_perm("settings.manage"))):
+    await settings_store.save(cfg_db, "store", body.model_dump(), member["user_id"], iso())
+    await audit(member, "settings.store_updated", "store", body.model_dump())
+    return settings_store.get("store")
+
+
+class InvoiceIn(BaseModel):
+    legal_name: str = Field(min_length=2, max_length=160)
+    gstin: str = Field(default="", pattern=r"^$|^[0-9]{2}[A-Z0-9]{13}$")
+    address: str = Field(default="", max_length=400)
+    state: str = Field(default="", max_length=40)
+    state_code: str = Field(default="", pattern=r"^$|^[0-9]{2}$")
+    gst_rate: float = Field(ge=0, le=28)
+    inclusive: bool = True
+    sac: str = Field(default="998439", max_length=10)
+    prefix: str = Field(pattern=r"^[A-Z0-9]{1,8}$")
+    email: str = Field(default="", max_length=200)
+    phone: str = Field(default="", max_length=30)
+
+
+@admin.put("/settings/invoice")
+async def admin_set_invoice(body: InvoiceIn, member: dict = Depends(require_perm("settings.manage"))):
+    await settings_store.save(cfg_db, "invoice", body.model_dump(), member["user_id"], iso())
+    await audit(member, "settings.invoice_updated", "invoice", {"gstin": body.gstin, "rate": body.gst_rate})
+    return settings_store.get("invoice")
+
+
+def build_invoice(pay: dict) -> dict:
+    inv = settings_store.get("invoice")
+    total = float(pay["amount_inr"])
+    rate = float(inv["gst_rate"]) if inv["gstin"] else 0.0
+    taxable = round(total / (1 + rate / 100), 2) if inv["inclusive"] else total
+    tax = round(total - taxable, 2) if inv["inclusive"] else round(total * rate / 100, 2)
+    grand = round(taxable + tax, 2)
+    b = pay.get("billing") or {}
+    intra = not b.get("state") or not inv["state"] or b["state"].strip().lower() == inv["state"].strip().lower()
+    lines = [{"desc": pay.get("item_label") or f"{pay['plan_name']} plan", "sac": inv["sac"], "qty": 1, "list_price": pay.get("list_price_inr", total),
+              "discount": pay.get("discount_inr", 0), "taxable": taxable}]
+    taxes = ([{"name": f"CGST {rate / 2:g}%", "amount": round(tax / 2, 2)}, {"name": f"SGST {rate / 2:g}%", "amount": round(tax - round(tax / 2, 2), 2)}]
+             if intra else [{"name": f"IGST {rate:g}%", "amount": tax}]) if rate else []
+    return {"title": "Tax Invoice" if inv["gstin"] else "Payment Receipt", "number": pay.get("invoice_no"), "date": pay.get("paid_at"),
+            "seller": {k: inv[k] for k in ("legal_name", "gstin", "address", "state", "state_code", "email", "phone")},
+            "buyer": {"name": b.get("name") or pay.get("user_email", ""), "gstin": b.get("gstin", ""), "state": b.get("state", ""), "email": pay.get("user_email", "")},
+            "lines": lines, "taxes": taxes, "taxable": taxable, "tax": tax, "total": grand, "coupon": pay.get("coupon"),
+            "payment_id": pay.get("razorpay_payment_id"), "status": pay["status"]}
+
+
+@api.get("/me/payments/{payment_id}/invoice")
+async def my_invoice(payment_id: str, member: dict = Depends(current_member)):
+    pay = await db.payments.find_one({"id": payment_id, "user_id": member["user_id"], "status": {"$in": ["captured", "refunded"]}}, NOFIELDS)
+    if not pay or not pay.get("invoice_no"):
+        raise HTTPException(404, "Invoice not available for this payment.")
+    return build_invoice(pay)
+
+
+@admin.get("/payments/{payment_id}/invoice")
+async def admin_invoice(payment_id: str, member: dict = Depends(require_perm("subscriptions.view"))):
+    pay = await db.payments.find_one({"id": payment_id}, NOFIELDS)
+    if not pay or not pay.get("invoice_no"):
+        raise HTTPException(404, "Invoice not available for this payment.")
+    return build_invoice(pay)
+
+
+# ---------- referrals ----------
+async def _ref_code(member: dict) -> str:
+    u = await db.users.find_one({"user_id": member["user_id"]}, {"_id": 0, "ref_code": 1})
+    if u and u.get("ref_code"):
+        return u["ref_code"]
+    while True:
+        code = secrets.token_urlsafe(5).replace("-", "").replace("_", "")[:6].upper()
+        if len(code) == 6 and not await db.users.find_one({"ref_code": code}):
+            break
+    await db.users.update_one({"user_id": member["user_id"]}, {"$set": {"ref_code": code}})
+    return code
+
+
+@api.get("/me/referral")
+async def my_referral(member: dict = Depends(current_member)):
+    st = settings_store.get("store")
+    count = await db.referrals.count_documents({"referrer_id": member["user_id"]})
+    return {"enabled": st["ref_enabled"], "code": await _ref_code(member), "reward_cards": st["ref_reward_cards"],
+            "count": count, "earned": await db.referrals.count_documents({"referrer_id": member["user_id"], "rewarded": True}) * st["ref_reward_cards"]}
+
+
+class ClaimIn(BaseModel):
+    code: str = Field(pattern=r"^[A-Za-z0-9]{6}$")
+
+
+@api.post("/me/referral/claim")
+async def claim_referral(body: ClaimIn, member: dict = Depends(current_member)):
+    st = settings_store.get("store")
+    if not st["ref_enabled"]:
+        raise HTTPException(400, "Referrals are paused right now.")
+    if datetime.fromisoformat(member["created_at"]) < now() - timedelta(days=7):
+        raise HTTPException(400, "Invite links only work for new accounts.")
+    ref = await db.users.find_one({"ref_code": body.code.upper()}, NOFIELDS)
+    if not ref or ref["user_id"] == member["user_id"]:
+        raise HTTPException(400, "This invite code isn't valid.")
+    try:
+        await db.referrals.insert_one({"id": new_id(), "referee_id": member["user_id"], "referrer_id": ref["user_id"], "code": body.code.upper(), "created_at": iso()})
+    except DuplicateKeyError:
+        raise HTTPException(400, "You've already used an invite code.")
+    n = st["ref_reward_cards"]
+    await db.users.update_one({"user_id": member["user_id"]}, {"$inc": {"bonus_cards": n}})
+    rewarded = await db.referrals.count_documents({"referrer_id": ref["user_id"], "rewarded": True}) < st["ref_max_rewards"]
+    if rewarded:
+        await db.users.update_one({"user_id": ref["user_id"]}, {"$inc": {"bonus_cards": n}})
+        await db.referrals.update_one({"referee_id": member["user_id"]}, {"$set": {"rewarded": True}})
+        if ref.get("email"):
+            notify(ref["email"], ET.referral_reward(n, member.get("name")), "referral")
+    return {"ok": True, "bonus_cards": n}
 
 
 def _dt(v: str):
