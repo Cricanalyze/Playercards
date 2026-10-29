@@ -23,6 +23,7 @@ function Inner() {
   if (!me) return <PageSkeleton variant="dashboard" />;
   const { member, entitlements: ent, subscriptions, payments } = me;
   const del = async (id) => { try { await api("delete", `/me/cards/${id}`); toast.success("Card deleted"); load(); } catch (e) { toast.error(errMsg(e)); } };
+  const shownPayments = payments.filter((p) => p.status !== "created" || Date.now() - new Date(p.created_at) < 30 * 60000);
   const invoice = async (p) => { try { downloadInvoicePdf(await api("get", `/me/payments/${p.id}/invoice`)); } catch (e) { toast.error(errMsg(e)); } };
   const unshare = async (id) => { try { await api("delete", `/me/cards/${id}/share`); toast.success("Public link turned off"); load(); } catch (e) { toast.error(errMsg(e)); } };
   const deleteMe = async () => { try { await api("delete", "/me"); toast.success("Your data was deleted."); refreshMe(); } catch (e) { toast.error(errMsg(e)); } };
@@ -75,8 +76,8 @@ function Inner() {
             </div>
           )}
           <p className="eyebrow mt-6">Billing history</p>
-          {payments.length === 0 ? <p className="text-sm text-muted-foreground mt-2">No payments yet.</p>
-            : payments.map((p) => <p key={p.id} className="text-sm" data-testid={`my-payment-${p.id}`}>{fmtDate(p.created_at)} · {p.plan_name} ({p.cycle === "year" ? "yearly" : "monthly"}) · {inr(p.amount_inr)} · <b className="uppercase">{{ created: "pending", authorized: "pending", captured: "paid" }[p.status] || p.status}</b>{p.invoice_no && <button onClick={() => invoice(p)} className="ml-2 text-amber-500 hover:underline" data-testid={`invoice-${p.id}`}>Invoice</button>}</p>)}
+          {shownPayments.length === 0 ? <p className="text-sm text-muted-foreground mt-2">No payments yet.</p>
+            : shownPayments.map((p) => <p key={p.id} className="text-sm" data-testid={`my-payment-${p.id}`}>{fmtDate(p.created_at)} · {p.plan_name}{p.kind && p.kind !== "plan" ? "" : ` (${p.cycle === "year" ? "yearly" : "monthly"})`}{p.coupon ? ` · coupon ${p.coupon}` : ""} · {inr(p.amount_inr)} · <b className="uppercase">{{ created: "pending", authorized: "pending", captured: "paid" }[p.status] || p.status}</b>{p.invoice_no && <button onClick={() => invoice(p)} className="ml-2 text-amber-500 hover:underline" data-testid={`invoice-${p.id}`}>Invoice</button>}</p>)}
         </div>
       </div>
 

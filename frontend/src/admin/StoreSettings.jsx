@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useApi, errMsg } from "@/lib/api";
+import { STATES } from "@/components/Store";
 
 const F = ({ label, children }) => <div className="space-y-1.5 min-w-0"><Label className="text-xs">{label}</Label>{children}</div>;
 
@@ -59,7 +60,7 @@ export function InvoiceSettings({ data, onSaved }) {
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <F label="Legal name"><Input value={f.legal_name} onChange={set("legal_name")} data-testid="inv-legal-name" /></F>
         <F label="GSTIN"><Input value={f.gstin} onChange={set("gstin")} maxLength={15} placeholder="Leave blank if not registered" data-testid="inv-gstin" /></F>
-        <F label="State"><Input value={f.state} onChange={set("state")} placeholder="Karnataka" data-testid="inv-state" /></F>
+        <F label="State"><select value={f.state} onChange={set("state")} className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm" data-testid="inv-state"><option value="">Select state</option>{STATES.map((s) => <option key={s}>{s}</option>)}</select></F>
         <F label="State code"><Input value={f.state_code} onChange={set("state_code")} maxLength={2} placeholder="29" data-testid="inv-state-code" /></F>
         <div className="sm:col-span-2"><F label="Registered address"><Input value={f.address} onChange={set("address")} data-testid="inv-address" /></F></div>
         <F label="GST rate %"><Input type="number" value={f.gst_rate} onChange={set("gst_rate")} data-testid="inv-rate" /></F>

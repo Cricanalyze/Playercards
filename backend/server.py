@@ -398,7 +398,9 @@ async def authorize_export(body: ExportIn, request: Request):
     if r.get("ok"):
         await db.events.insert_one({"id": new_id(), "type": "card_downloaded", "sport_id": body.sport_id,
                                     "template_id": body.template_id, "format": body.format, "user_id": member["user_id"], "at": iso()})
-    if use_pass and not r.get("duplicate"):
+    if r.get("duplicate"):
+        use_pass = bool(await db.usage_events.find_one({"key": f"{member['user_id']}:wm:{body.request_id}"}))
+    elif use_pass:
         use_pass = not (await use_wallet(member, "watermark_passes", f"wm:{body.request_id}")).get("denied")
     ent = await get_entitlements(member)
     return {"allowed": True, "watermark": not (ent["remove_watermark"] or use_pass), "cards_remaining": ent["cards_remaining"],
@@ -523,14 +525,27 @@ async def price_item(body: CheckoutIn) -> dict:
     return {"amount": st["wm_bundle_price"] if qty > 1 else st["wm_price"], "label": f"{qty} watermark-free download{'s' if qty > 1 else ''}", "qty": qty}
 
 
+def _aware(v: str):
+    d = _dt(v)
+    return d.replace(tzinfo=timezone.utc) if d and d.tzinfo is None else d
+
+
+def add_tax(amount: float) -> float:
+    inv = settings_store.get("invoice")
+    return round(amount * (1 + float(inv["gst_rate"]) / 100), 2) if inv["gstin"] and not inv["inclusive"] else amount
+
+
 async def apply_coupon(code: str, body: CheckoutIn, amount: float, member: dict) -> dict:
     c = await db.coupons.find_one({"code": code.strip().upper(), "active": True}, NOFIELDS)
     if not c:
         raise HTTPException(400, "This coupon code isn't valid.")
-    if c.get("expires_at") and now() > datetime.fromisoformat(c["expires_at"]):
+    exp = _aware(c.get("expires_at", ""))
+    if exp and now() > exp:
         raise HTTPException(400, "This coupon has expired.")
-    if c.get("max_uses") and c.get("uses", 0) >= c["max_uses"]:
-        raise HTTPException(400, "This coupon has been fully used.")
+    if c.get("max_uses"):
+        pending = await db.payments.count_documents({"coupon": c["code"], "status": "created", "created_at": {"$gt": iso(now() - timedelta(minutes=30))}})
+        if c.get("uses", 0) + pending >= c["max_uses"]:
+            raise HTTPException(400, "This coupon has been fully used.")
     if c.get("applies_to", "all") not in ("all", "plans" if body.kind == "plan" else "extras"):
         raise HTTPException(400, f"This coupon only works on {'plans' if c['applies_to'] == 'plans' else 'card packs and watermark passes'}.")
     if c.get("once_per_user") and await db.payments.find_one({"user_id": member["user_id"], "coupon": c["code"], "status": "captured"}):
@@ -547,6 +562,7 @@ async def billing_quote(body: CheckoutIn, member: dict = Depends(current_member)
     if body.coupon.strip():
         cp = await apply_coupon(body.coupon, body, it["amount"], member)
         q.update(final=cp["final"], discount=cp["discount"], coupon=cp["code"])
+    q["payable"] = add_tax(q["final"])
     return q
 
 
@@ -562,7 +578,7 @@ async def checkout(body: CheckoutIn, request: Request, member: dict = Depends(cu
         raise HTTPException(400, "This item has no price set.")
     if body.coupon.strip():
         cp = await apply_coupon(body.coupon, body, amount, member)
-    final = cp["final"] if cp else amount
+    final = add_tax(cp["final"] if cp else amount)
     plan = it.get("plan")
     pid = new_id()
     order = rzp("POST", "/orders", json={"amount": int(round(final * 100)), "currency": "INR", "receipt": pid[:40],
@@ -2185,7 +2201,7 @@ async def admin_coupon_save(body: CouponIn, member: dict = Depends(require_perm(
         raise HTTPException(400, "A percent discount can't be more than 100.")
     if body.expires_at and not _dt(body.expires_at):
         raise HTTPException(400, "Enter a valid expiry date.")
-    d = {**body.model_dump(), "code": body.code.upper()}
+    d = {**body.model_dump(), "code": body.code.upper(), "expires_at": iso(_aware(body.expires_at)) if body.expires_at else ""}
     await db.coupons.update_one({"code": d["code"]}, {"$set": d, "$setOnInsert": {"uses": 0, "created_at": iso(), "id": new_id()}}, upsert=True)
     await audit(member, "coupon.saved", d["code"], {k: d[k] for k in ("type", "value", "applies_to", "max_uses", "active")})
     return await db.coupons.find_one({"code": d["code"]}, NOFIELDS)
@@ -2253,8 +2269,8 @@ def build_invoice(pay: dict) -> dict:
     inv = settings_store.get("invoice")
     total = float(pay["amount_inr"])
     rate = float(inv["gst_rate"]) if inv["gstin"] else 0.0
-    taxable = round(total / (1 + rate / 100), 2) if inv["inclusive"] else total
-    tax = round(total - taxable, 2) if inv["inclusive"] else round(total * rate / 100, 2)
+    taxable = round(total / (1 + rate / 100), 2)  # amount_inr is what was charged, tax included either way
+    tax = round(total - taxable, 2)
     grand = round(taxable + tax, 2)
     b = pay.get("billing") or {}
     intra = not b.get("state") or not inv["state"] or b["state"].strip().lower() == inv["state"].strip().lower()
@@ -2320,6 +2336,8 @@ async def claim_referral(body: ClaimIn, member: dict = Depends(current_member)):
     ref = await db.users.find_one({"ref_code": body.code.upper()}, NOFIELDS)
     if not ref or ref["user_id"] == member["user_id"]:
         raise HTTPException(400, "This invite code isn't valid.")
+    if await db.referrals.find_one({"referee_id": ref["user_id"], "referrer_id": member["user_id"]}):
+        raise HTTPException(400, "You can't use the invite code of someone you invited.")
     try:
         await db.referrals.insert_one({"id": new_id(), "referee_id": member["user_id"], "referrer_id": ref["user_id"], "code": body.code.upper(), "created_at": iso()})
     except DuplicateKeyError:

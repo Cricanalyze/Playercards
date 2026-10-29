@@ -46,7 +46,7 @@ const Credits = ({ ent, isSignedIn }) => {
   const low = ent.cards_remaining === 0;
   return (
     <div className={`text-xs text-center rounded-full border px-3 py-1.5 ${low ? "border-destructive/50 text-destructive" : "border-border text-muted-foreground"}`} data-testid="editor-credits">
-      <b className="text-foreground">{ent.plan_name}</b> · {ent.cards_remaining} of {ent.cards_per_month} card credits left · resets {fmtDate(ent.reset_at)}
+      <b className="text-foreground">{ent.plan_name}</b> · {ent.monthly_remaining ?? ent.cards_remaining} of {ent.cards_per_month} card credits left{ent.bonus_cards ? ` + ${ent.bonus_cards} bonus` : ""} · resets {fmtDate(ent.reset_at)}
       {low && <Link to="/pricing" className="ml-2 text-amber-500 font-semibold hover:underline" data-testid="editor-upgrade-link">Upgrade</Link>}
     </div>
   );
@@ -167,7 +167,7 @@ export default function Create() {
         </div>
         <div className="min-w-0">
         {lock && <EditLock reason={lock} onNew={newCard} />}
-        <fieldset disabled={!!lock} className={lock ? "opacity-50 pointer-events-none select-none" : ""} data-testid="editor-fieldset">
+        <fieldset disabled={!!lock} className={`min-w-0 ${lock ? "opacity-50 pointer-events-none select-none" : ""}`} data-testid="editor-fieldset">
         <Tabs value={tab} onValueChange={setTab} className="min-w-0">
           <TabsList className="w-full justify-start overflow-x-auto h-auto p-1 rounded-full [scrollbar-width:none]">
             {TABS.map(([v, l]) => <TabsTrigger key={v} value={v} data-testid={`editor-tab-${v}`} className="rounded-full font-bold uppercase text-xs tracking-wide px-4 h-9 shrink-0">{l}</TabsTrigger>)}

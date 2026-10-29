@@ -17,7 +17,7 @@ export default function Coupons() {
   const load = () => api("get", "/admin/coupons").then(setRows).catch((e) => toast.error(errMsg(e)));
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const save = async (body) => {
-    try { await api("post", "/admin/coupons", { ...body, value: Number(body.value), max_uses: Number(body.max_uses), expires_at: body.expires_at ? new Date(body.expires_at).toISOString() : "" }); toast.success("Coupon saved"); setF(EMPTY); load(); }
+    try { await api("post", "/admin/coupons", { ...body, value: Number(body.value), max_uses: Number(body.max_uses), expires_at: body.expires_at ? new Date(`${body.expires_at.slice(0, 10)}T23:59:59`).toISOString() : "" }); toast.success("Coupon saved"); setF(EMPTY); load(); }
     catch (e) { toast.error(errMsg(e)); }
   };
   const del = async (c) => { if (!window.confirm(`Delete ${c.code}?`)) return; try { await api("delete", `/admin/coupons/${c.code}`); load(); } catch (e) { toast.error(errMsg(e)); } };

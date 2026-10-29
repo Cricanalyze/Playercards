@@ -1,28 +1,36 @@
-# RivalCard (Cricanalyze/Playercards)
+# FlexoCards — PRD
 
-## Original asks
-1. Run https://github.com/Cricanalyze/Playercards as-is.
-2. Turn on Clerk login; add a sample cricket card on the home page.
-3. Add the website functions and the subscription model (no redesign): card creator, 25 templates in 5 collections, background tools by plan, Free/Basic/Pro/Team plans (₹0/18/45/79 a month, ₹0/180/450/790 a year, 2/5/15/40 cards a month), backend enforcement, Super Admin subscription controls, Razorpay payments, user/admin management.
+## Original problem statement
+Run the existing RivalCard app from github.com/Cricanalyze/Playercards (branch `main2`) as-is: player-card maker for 60+ sports/esports (crop/zoom/adjust, live preview, PNG download/share/save), 25 templates (Free/Basic/Pro/Premium/Exclusive), plan-gated background tools, plans Free ₹0 / Basic ₹18 / Pro ₹45 / Team ₹79 monthly (×10 yearly) with 2/5/15/40 cards a month, user dashboard, Razorpay checkout (test mode), Super Admin panel, Clerk sign-in (owner's own keys).
+
+Follow-up requests: rebrand to **FlexoCards** (Buddy Innovations and Technologies Private Limited) with user logo/favicon; account required for all cards; block screenshots/print; blog with admin + invited player authors; mobile responsive; public share links on paid plans only; paid users can edit cards for 6 h, Free can't edit after create/download; admin Razorpay key settings; email via Emergent (default) or Hostinger SMTP, editable in admin; branded templates for all emails incl. OTP; social links from admin; Coming Soon + scheduled Maintenance pages; MongoDB URL override (default = platform DB); Pro storybook (flip-book, 5 s/card story video, PDF), all downloadable; pricing page features; skeleton loaders; FAQ updates; revenue features (top-up packs, coupons + referrals, watermark passes, GST invoices).
 
 ## Architecture
-- FastAPI (backend/server.py) + MongoDB + React (CRA, shadcn). Auth uses the user's own Clerk dev keys (CLERK_OWN_*), with a fallback in clerk_auth.py.
-- Catalog seed is in backend/seed_catalog.py (PLANS, 25 TEMPLATES, BACKGROUNDS). A one-time migration (meta "subs_v2") replaced the old plans and templates; admin edits after that are kept.
-- Entitlements: get_entitlements() uses the highest-order active subscription against the LIVE plan document. Usage is tracked per calendar month (UTC) in `usage`, with idempotent `usage_events` (unique request_id). consume() increments atomically and only below the limit.
-- Credits: every /api/cards/export call (download or share) uses 1 credit. A duplicate request_id is never charged. Sign-in is required to download. Template locks and features_used are checked on the backend.
-- Background removal runs in the browser (MediaPipe). /api/tools/bg-removal checks the plan and counts usage first. If processing fails, a retry reuses the same request_id, so no second credit is used.
-- Razorpay: orders API, HMAC signature check on /billing/verify, payment fetched and amount checked, auto-capture when the payment is only authorized, /billing/webhook with signature check and idempotent events (captured, failed, authorized, refund). A plan activates only after verification.
+- React (CRA) + FastAPI + MongoDB (motor). Clerk auth (own instance, `clerk_auth.py`). Razorpay Orders API.
+- `server.py` (all routes, `/api`), `settings_store.py` (admin-editable settings with Fernet-encrypted secrets, always stored in the platform DB `cfg_db`), `mailer.py` (Emergent email + SMTP, guardrail gate, HTML template), `email_templates.py`, `storage.py` (Emergent object storage), `rbac.py`.
+- Site gate middleware returns 423 for non-staff API calls during Coming Soon/Maintenance.
+- Storybook images, share images and blog images in object storage (storybook images private and auth-served).
 
-## Implemented (2026-06)
-- Run, Clerk login, cricket demo card. iteration_1 passed.
-- Subscription model and all of the admin controls listed above. iteration_2: backend 39/39 passed, frontend 100%.
-- Fixed after iteration_2: pending grants now start automatically; extend is blocked for canceled or refunded subscriptions; disabling a plan keeps existing subscribers; authorized payments are captured; switching plans asks for confirmation; bg-removal retries are free; date inputs use the dark picker.
+## Implemented (Oct 2026)
+- Imported main2 and ran it; rebrand, logo/favicon, Clerk wording “Continue to FlexoCards”
+- Blog (markdown editor, image upload, review flow, authors), public share links, 6 h edit window
+- Screen guard (best-effort), print block, mobile fixes, skeleton loaders, boot preloader, FAQ
+- Admin Settings: site status, database (test/switch/copy/backup/use default), store prices, GST invoice details, Razorpay keys, email provider + SMTP, Clerk email webhook, template previews, social links, email log
+- Branded emails: welcome, receipts, purchase, invitation, blog, referral, OTP/reset/magic link/security (via Clerk `email.created` webhook once connected)
+- Storybook (Pro/Team): flip-book + downloadable HTML flip-book + page-turn video, story video (5 s/card, MP4/WebM), PDF
+- Revenue: card packs (bonus cards never expire), watermark-free passes, coupons (admin CRUD), referrals (both get bonus cards), GST invoices (numbered, CGST/SGST/IGST, PDF)
+- Test pass iteration_1: backend 16/17 (failure fixed: coupon timezone); UI issues fixed (mobile Create overflow, payment labels, credits pill, pending orders, seller state dropdown, coupon end-of-day expiry, reverse referrals, coupon max-use reservations, GST-exclusive charging, watermark replay)
 
-## Pending configuration
-- RAZORPAY_WEBHOOK_SECRET is not set (the webhook returns 503). Add it in the secrets card and point the Razorpay webhook at /api/billing/webhook.
-- Production needs live Razorpay and live Clerk keys.
+## Known limits
+- Razorpay payment completion not automated end to end in the UI (third-party iframe). Capture → invoice → wallet was verified on the backend.
+- Razorpay webhook secret not set yet, so refunds and late captures don't update on their own.
+- Clerk OTP emails stay Clerk-branded until the owner adds the webhook signing secret and turns off “Delivered by Clerk”.
+- Screenshot blocking is best-effort; OS and phone screenshots can't be fully blocked.
+- Changing the database doesn't migrate data unless “copy data” is on; settings stay in the platform DB.
 
 ## Backlog
-- P1: auto-renewing plans with Razorpay Subscriptions; proration or credit when switching plans.
-- P2: admin CRUD for the background library; coupon codes; GST invoices.
-- Old backend/tests/test_rivalcard_*.py are obsolete. tests/test_subscriptions_v2.py is the current suite.
+- P0: Auto-renewing plans (Razorpay Subscriptions / UPI Autopay) (3)
+- P0: Bulk team/academy cards from a spreadsheet with sponsor logo (5)
+- P1: Storybook video music and premium transitions (9)
+- P1: Admin payments list invoice button; live Clerk/Razorpay keys before launch
+- P2: Gift a plan, paid template drops, printed cards, AI add-ons
