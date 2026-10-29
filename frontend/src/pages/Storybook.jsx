@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { BookOpen, Smartphone, FileDown, Trash2, Lock, Loader2, Plus } from "lucide-react";
+import { BookOpen, FileDown, Trash2, Lock, Loader2, Plus, Film, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAppData } from "@/context/AppData";
 import { useApi, errMsg, fmtDate } from "@/lib/api";
@@ -9,8 +9,9 @@ import { useStoryImages } from "@/components/storybook/useStoryImages";
 import { FlipBook } from "@/components/storybook/FlipBook";
 import { StoryViewer } from "@/components/storybook/StoryViewer";
 import { buildStorybookPdf } from "@/components/storybook/pdf";
+import { buildStoryVideo, videoSupported } from "@/components/storybook/video";
 
-const TABS = [["flip", "Flip-book", BookOpen], ["story", "Story slideshow", Smartphone], ["pdf", "PDF booklet", FileDown]];
+const TABS = [["flip", "Flip-book", BookOpen], ["story", "Story video", Film], ["pdf", "PDF booklet", FileDown]];
 
 const Upsell = () => (
   <div className="rounded-3xl border border-amber-500/40 bg-amber-500/5 p-8 sm:p-12 text-center max-w-2xl mx-auto" data-testid="storybook-upsell">
@@ -28,6 +29,7 @@ export default function Storybook() {
   const [tab, setTab] = useState("flip");
   const [story, setStory] = useState(null);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [vid, setVid] = useState(null);
   const load = () => api("get", "/me/storybook").then(setData).catch((e) => { toast.error(errMsg(e)); setData({ enabled: false, pages: [] }); });
   useEffect(() => { load(); document.title = "My Storybook · FlexoCards"; }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const pages = data?.pages || [];
@@ -43,6 +45,18 @@ export default function Storybook() {
     try { const n = await buildStorybookPdf(pages, blobs, name); toast.success(`PDF ready with ${n} cards`); } catch { toast.error("Couldn't build the PDF. Try again."); } finally { setPdfBusy(false); }
   };
   const ready = pages.filter((p) => urls[p.id]).length;
+  const video = async () => {
+    setVid(0);
+    try {
+      const r = await buildStoryVideo(pages, urls, setVid);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(r.blob);
+      a.download = `flexocards-story-${new Date().toISOString().slice(0, 10)}.${r.ext}`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast.success(`Story video ready (${r.seconds} sec, ${r.ext.toUpperCase()})`);
+    } catch { toast.error("Couldn't make the video in this browser. Try Chrome or Safari."); } finally { setVid(null); }
+  };
   return (
     <div className="container-x py-10 sm:py-14" data-testid="storybook-page">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -69,10 +83,23 @@ export default function Storybook() {
               {tab === "flip" && <FlipBook pages={pages} urls={urls} name={name} />}
               {tab === "story" && (
                 <div className="rounded-3xl border border-border p-8 text-center bg-[#0b1a3a] text-white" data-testid="storybook-story-panel">
-                  <Smartphone className="w-8 h-8 mx-auto text-amber-400" />
-                  <p className="font-display font-black uppercase text-3xl mt-3">Play as a story</p>
-                  <p className="text-sm text-slate-300 mt-2">Full-screen 9:16 slides that move on their own. Tap or swipe to skip, hold to pause.</p>
-                  <Button onClick={() => setStory(0)} className="rounded-full font-bold mt-6" data-testid="storybook-play-button">Play story</Button>
+                  <Film className="w-8 h-8 mx-auto text-amber-400" />
+                  <p className="font-display font-black uppercase text-3xl mt-3">Story video</p>
+                  <p className="text-sm text-slate-300 mt-2">A 9:16 video (1080×1920) with 5 seconds for each card, ready for Instagram Stories, Reels or WhatsApp Status.</p>
+                  <p className="text-xs text-slate-400 mt-1">{ready} cards · {ready * 5} seconds</p>
+                  <div className="flex flex-wrap justify-center gap-2 mt-6">
+                    <Button onClick={video} disabled={vid !== null || ready === 0 || !videoSupported()} className="rounded-full font-bold" data-testid="storybook-video-button">
+                      {vid !== null ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Film className="w-4 h-4 mr-1" />}
+                      {vid !== null ? `Making video… ${Math.round(vid * 100)}%` : "Download video"}</Button>
+                    <Button variant="outline" onClick={() => setStory(0)} disabled={vid !== null} className="rounded-full font-bold bg-transparent text-white border-white/30 hover:bg-white/10 hover:text-white" data-testid="storybook-play-button"><Play className="w-4 h-4 mr-1" />Preview</Button>
+                  </div>
+                  {vid !== null && (
+                    <div className="max-w-sm mx-auto mt-5" data-testid="storybook-video-progress">
+                      <div className="h-2 rounded-full bg-white/15 overflow-hidden"><div className="h-full bg-amber-400 transition-[width]" style={{ width: `${vid * 100}%` }} /></div>
+                      <p className="text-[11px] text-slate-400 mt-2">Keep this tab open while the video records. It takes as long as the video itself.</p>
+                    </div>
+                  )}
+                  {!videoSupported() && <p className="text-xs text-amber-400 mt-3">This browser can't record video. Try Chrome or Safari.</p>}
                 </div>
               )}
               {tab === "pdf" && (

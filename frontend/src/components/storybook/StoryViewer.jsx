@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { X, Pause, Play, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
-const DURATION = 4500;
+const DURATION = 5000;
 
 export function StoryViewer({ pages, urls, blobs, start = 0, onClose }) {
   const [i, setI] = useState(start);
