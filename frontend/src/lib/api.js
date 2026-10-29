@@ -7,13 +7,13 @@ export const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export function useApi() {
   const { getToken, isSignedIn } = useAuth();
   return useCallback(
-    async (method, path, data, params) => {
+    async (method, path, data, params, extra = {}) => {
       const headers = {};
       if (isSignedIn) {
         const t = await getToken();
         if (t) headers.Authorization = `Bearer ${t}`;
       }
-      const res = await axios({ method, url: API + path, data, params, headers });
+      const res = await axios({ method, url: API + path, data, params, headers, ...extra });
       return res.data;
     },
     [getToken, isSignedIn]

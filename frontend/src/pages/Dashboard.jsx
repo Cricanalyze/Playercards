@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { Show } from "@clerk/react";
 import { toast } from "sonner";
-import { Trash2, Pencil, Crown, Eye, Globe, PenLine } from "lucide-react";
+import { Trash2, Pencil, Crown, Eye, Globe, PenLine, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -32,6 +32,7 @@ function Inner() {
           <p className="text-sm text-muted-foreground" data-testid="dashboard-email">{member.email}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" className="rounded-full font-bold" data-testid="dashboard-storybook-button"><Link to="/storybook"><BookOpen className="w-4 h-4 mr-1" />My storybook</Link></Button>
           {member.can_blog && <Button asChild variant="outline" className="rounded-full font-bold" data-testid="dashboard-write-button"><Link to="/write"><PenLine className="w-4 h-4 mr-1" />My blog posts</Link></Button>}
           <Button asChild className="rounded-full font-bold hover:bg-amber-400 hover:text-slate-950" data-testid="dashboard-new-card-button"><Link to="/create">New card</Link></Button>
         </div>

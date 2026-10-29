@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import re
 import logging
 import os
 import secrets
@@ -21,7 +22,8 @@ from pydantic import BaseModel, Field, field_validator
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, StreamingResponse
+from pymongo.errors import BulkWriteError
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -47,6 +49,27 @@ except ModuleNotFoundError:
 
 client = AsyncIOMotorClient(os.environ["MONGO_URL"])
 db = client[os.environ["DB_NAME"]]
+cfg_db = db  # platform DB: always holds app_settings, even when app data lives in a custom MongoDB
+DB_STATE = {"mode": "default", "error": ""}
+
+
+async def connect_mongo(url: str, name: str):
+    c = AsyncIOMotorClient(url, serverSelectionTimeoutMS=6000, connectTimeoutMS=6000)
+    await c.admin.command("ping")
+    return c, c[name]
+
+
+async def activate_db(url: str, name: str):
+    global client, db
+    client, db = await connect_mongo(url, name)
+    DB_STATE.update(mode="custom", error="")
+
+
+def use_default_db():
+    global client, db
+    if db is not cfg_db:
+        client, db = cfg_db.client, cfg_db
+    DB_STATE.update(mode="default")
 app = FastAPI(title="FlexoCards API")
 api = APIRouter(prefix="/api")
 logger = logging.getLogger("rivalcard")
@@ -247,6 +270,22 @@ async def migrate_catalog():
 
 @app.on_event("startup")
 async def startup():
+    await settings_store.load_all(cfg_db)
+    dbc = settings_store.get("database")
+    if dbc["enabled"] and dbc["url"]:
+        try:
+            await activate_db(dbc["url"], dbc["db_name"])
+        except Exception as e:
+            DB_STATE["error"] = f"Custom MongoDB unreachable at startup, using default: {str(e)[:200]}"
+            logger.error(DB_STATE["error"])
+    await prepare_db()
+    try:
+        init_storage()
+    except Exception as e:
+        logger.error("storage init failed: %s", e)
+
+
+async def prepare_db():
     for old, new in RETIRED_ROLES.items():
         await db.users.update_many({"role": old}, {"$set": {"role": new}})
     await migrate_catalog()
@@ -268,11 +307,7 @@ async def startup():
     await db.blog_posts.create_index([("status", 1), ("published_at", -1)])
     await db.saved_cards.create_index("share.id", sparse=True)
     await db.files.create_index("storage_path")
-    await settings_store.load_all(db)
-    try:
-        init_storage()
-    except Exception as e:
-        logger.error("storage init failed: %s", e)
+    await db.storybook_pages.create_index([("user_id", 1), ("created_at", 1)])
 
 
 # ---------- public ----------
@@ -1681,7 +1716,7 @@ def _email_view() -> dict:
 @admin.get("/settings")
 async def admin_settings(member: dict = Depends(require_perm("settings.manage"))):
     logs = await db.email_log.find({}, NOFIELDS).sort("created_at", -1).limit(15).to_list(15)
-    return {"razorpay": _rzp_view(), "email": _email_view(), "email_log": logs, "clerk": _clerk_view(), "site": settings_store.get("site"), "site_status": site_status(),
+    return {"razorpay": _rzp_view(), "email": _email_view(), "email_log": logs, "clerk": _clerk_view(), "database": await _db_view(), "site": settings_store.get("site"), "site_status": site_status(),
             "social": settings_store.get("social"), "templates": [{"id": k, "label": v[0]} for k, v in ET.SAMPLES.items()]}
 
 
@@ -1701,7 +1736,7 @@ async def admin_set_razorpay(body: RzpSettingsIn, member: dict = Depends(require
         raise HTTPException(400, "Razorpay rejected these keys. Check the Key ID and Key Secret.")
     if r.status_code >= 400:
         raise HTTPException(400, "Couldn't reach Razorpay to check the keys. Try again.")
-    await settings_store.save(db, "razorpay", {"key_id": body.key_id.strip(), "key_secret": body.key_secret.strip() or None,
+    await settings_store.save(cfg_db, "razorpay", {"key_id": body.key_id.strip(), "key_secret": body.key_secret.strip() or None,
                                                "webhook_secret": body.webhook_secret.strip() or None}, member["user_id"], iso())
     await audit(member, "settings.razorpay_updated", "razorpay", {"key_id": body.key_id[:14] + "…", "webhook": bool(body.webhook_secret)})
     return _rzp_view()
@@ -1729,7 +1764,7 @@ async def admin_set_email(body: EmailSettingsIn, member: dict = Depends(require_
         merged = {**email_cfg(), **{k: v for k, v in vals.items() if v is not None}}
         if not (merged["smtp_host"] and merged["smtp_user"] and merged["smtp_pass"]):
             raise HTTPException(400, "To use SMTP, fill in host, username and password.")
-    await settings_store.save(db, "email", vals, member["user_id"], iso())
+    await settings_store.save(cfg_db, "email", vals, member["user_id"], iso())
     await audit(member, "settings.email_updated", "email", {"provider": body.provider, "smtp_host": body.smtp_host})
     return _email_view()
 
@@ -1738,7 +1773,7 @@ async def admin_set_email(body: EmailSettingsIn, member: dict = Depends(require_
 async def admin_reset_settings(section: str, member: dict = Depends(require_perm("settings.manage"))):
     if section not in ("razorpay", "email", "clerk", "social"):
         raise HTTPException(404, "Unknown settings section")
-    await settings_store.reset(db, section)
+    await settings_store.reset(cfg_db, section)
     await audit(member, f"settings.{section}_reset", section)
     return {"razorpay": _rzp_view(), "email": _email_view(), "clerk": _clerk_view(), "social": settings_store.get("social")}
 
@@ -1787,7 +1822,7 @@ class ClerkSettingsIn(BaseModel):
 
 @admin.put("/settings/clerk")
 async def admin_set_clerk(body: ClerkSettingsIn, member: dict = Depends(require_perm("settings.manage"))):
-    await settings_store.save(db, "clerk", {"webhook_secret": body.webhook_secret.strip()}, member["user_id"], iso())
+    await settings_store.save(cfg_db, "clerk", {"webhook_secret": body.webhook_secret.strip()}, member["user_id"], iso())
     await audit(member, "settings.clerk_updated", "clerk")
     return _clerk_view()
 
@@ -1808,8 +1843,8 @@ class SocialIn(BaseModel):
 
 @admin.put("/settings/social")
 async def admin_set_social(body: SocialIn, member: dict = Depends(require_perm("settings.manage"))):
-    await settings_store.reset(db, "social")
-    await settings_store.save(db, "social", {k: v.strip() for k, v in body.model_dump().items()}, member["user_id"], iso())
+    await settings_store.reset(cfg_db, "social")
+    await settings_store.save(cfg_db, "social", {k: v.strip() for k, v in body.model_dump().items()}, member["user_id"], iso())
     await audit(member, "settings.social_updated", "social", {k: bool(v) for k, v in body.model_dump().items()})
     return settings_store.get("social")
 
@@ -1851,6 +1886,181 @@ async def clerk_webhook(request: Request):
     if log["status"] != "sent":
         raise HTTPException(500, "Email delivery failed")
     await db.webhook_events.insert_one({"event_id": f"clerk:{sid}", "type": "clerk.email.created", "slug": slug, "received_at": iso()})
+    return {"ok": True}
+
+
+# ---------- database settings ----------
+def _mask_url(url: str) -> str:
+    return re.sub(r"//[^@/]+@", "//••••@", url or "")
+
+
+async def _db_stats(d) -> dict:
+    t = time.time()
+    await d.command("ping")
+    ping = round((time.time() - t) * 1000)
+    st = await d.command("dbstats")
+    names = sorted(n for n in await d.list_collection_names() if not n.startswith("system."))
+    counts = {n: await d[n].estimated_document_count() for n in names}
+    return {"ping_ms": ping, "data_mb": round(st.get("dataSize", 0) / 1048576, 2), "storage_mb": round(st.get("storageSize", 0) / 1048576, 2), "collections": counts}
+
+
+async def _db_view() -> dict:
+    c = settings_store.get("database")
+    out = {"mode": DB_STATE["mode"], "error": DB_STATE["error"], "db_name": db.name,
+           "custom_url": _mask_url(c["url"]), "custom_db_name": c["db_name"], "custom_saved": bool(c["url"])}
+    try:
+        out.update(ok=True, **await _db_stats(db))
+    except Exception as e:
+        out.update(ok=False, error=out["error"] or f"Database check failed: {str(e)[:200]}")
+    return out
+
+
+class DbIn(BaseModel):
+    url: str = Field(default="", max_length=1000)
+    db_name: str = Field(pattern=r"^[A-Za-z0-9_-]{1,60}$")
+    copy_data: bool = False
+
+
+async def _check_target(body: DbIn):
+    url = body.url.strip() or settings_store.get("database")["url"]
+    if not re.match(r"^mongodb(\+srv)?://", url):
+        raise HTTPException(400, "Enter a MongoDB URL starting with mongodb:// or mongodb+srv://")
+    try:
+        c, d = await connect_mongo(url, body.db_name)
+        return url, c, d, await _db_stats(d)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Couldn't connect: {str(e)[:220]}")
+
+
+@admin.post("/settings/database/test")
+async def admin_db_test(body: DbIn, member: dict = Depends(require_perm("settings.manage"))):
+    _, c, _, stats = await _check_target(body)
+    c.close()
+    return {"ok": True, **stats}
+
+
+@admin.put("/settings/database")
+async def admin_db_switch(body: DbIn, member: dict = Depends(require_perm("settings.manage"))):
+    url, c, target, _ = await _check_target(body)
+    copied = {}
+    if body.copy_data:
+        for name in await db.list_collection_names():
+            if name.startswith("system.") or name == "app_settings":
+                continue
+            docs = await db[name].find({}).to_list(None)
+            if not docs:
+                continue
+            try:
+                res = await target[name].insert_many(docs, ordered=False)
+                copied[name] = len(res.inserted_ids)
+            except BulkWriteError as e:
+                copied[name] = e.details.get("nInserted", 0)
+    c.close()
+    await settings_store.save(cfg_db, "database", {"enabled": True, "url": url, "db_name": body.db_name}, member["user_id"], iso())
+    await activate_db(url, body.db_name)
+    await prepare_db()
+    _STAFF_CACHE.clear()
+    await audit(member, "settings.database_switched", "database", {"db_name": body.db_name, "copied": copied})
+    return {"copied": copied, "database": await _db_view()}
+
+
+@admin.post("/settings/database/use-default")
+async def admin_db_default(member: dict = Depends(require_perm("settings.manage"))):
+    await settings_store.save(cfg_db, "database", {"enabled": False}, member["user_id"], iso())
+    use_default_db()
+    _STAFF_CACHE.clear()
+    await audit(member, "settings.database_default", "database")
+    return await _db_view()
+
+
+@admin.get("/settings/database/backup")
+async def admin_db_backup(member: dict = Depends(require_perm("settings.manage"))):
+    from bson import json_util
+    names = [n for n in await db.list_collection_names() if not n.startswith("system.") and n != "app_settings"]
+
+    async def gen():
+        yield '{"app":"FlexoCards","exported_at":"' + iso() + '","collections":{'
+        for i, n in enumerate(names):
+            yield ("," if i else "") + json.dumps(n) + ":["
+            first = True
+            async for doc in db[n].find({}):
+                yield ("" if first else ",") + json_util.dumps(doc)
+                first = False
+            yield "]"
+        yield "}}"
+    await audit(member, "settings.database_backup", "database")
+    fname = f"flexocards-backup-{now().strftime('%Y%m%d-%H%M')}.json"
+    return StreamingResponse(gen(), media_type="application/json", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+# ---------- storybook (Pro & Team) ----------
+STORYBOOK_PLANS = ("pro", "team")
+
+
+class PageIn(BaseModel):
+    image: str = Field(max_length=15_000_000)
+    title: str = Field(default="", max_length=120)
+    sport_id: str = Field(default="", max_length=60)
+    template_id: str = Field(default="", max_length=60)
+    format: str = Field(default="card", pattern="^(card|story)$")
+
+
+@api.post("/me/storybook")
+async def add_story_page(body: PageIn, request: Request, member: dict = Depends(current_member)):
+    rate_limit(request, "storybook", 30)
+    if (await get_entitlements(member))["plan_id"] not in STORYBOOK_PLANS:
+        upgrade_error("The storybook is part of the Pro and Team plans.", "storybook")
+    if await db.storybook_pages.count_documents({"user_id": member["user_id"]}) >= 300:
+        raise HTTPException(400, "Your storybook is full (300 pages). Remove some pages first.")
+    import base64
+    prefix = "data:image/png;base64,"
+    if not body.image.startswith(prefix):
+        raise HTTPException(400, "Card image must be a PNG")
+    try:
+        raw = base64.b64decode(body.image[len(prefix):], validate=True)
+    except ValueError:
+        raise HTTPException(400, "Invalid image")
+    try:
+        res = put_object(f"{APP_PREFIX}/storybook/{member['user_id']}/{new_id()}.png", raw, "image/png")
+    except requests.RequestException:
+        raise HTTPException(400, "Couldn't save to your storybook. Try again.")
+    await db.files.insert_one({"id": new_id(), "storage_path": res["path"], "content_type": "image/png", "public": False, "owner_id": member["user_id"],
+                               "kind": "storybook", "size": len(raw), "is_deleted": False, "created_at": iso()})
+    sport = await db.sports.find_one({"id": body.sport_id}, {"_id": 0, "name": 1})
+    page = {"id": new_id(), "user_id": member["user_id"], "image_path": res["path"], "title": body.title or "Player card",
+            "sport": (sport or {}).get("name", ""), "template_id": body.template_id, "format": body.format, "created_at": iso()}
+    await db.storybook_pages.insert_one(page)
+    page.pop("_id", None)
+    return {k: v for k, v in page.items() if k != "image_path"}
+
+
+@api.get("/me/storybook")
+async def list_story_pages(member: dict = Depends(current_member)):
+    ent = await get_entitlements(member)
+    pages = await db.storybook_pages.find({"user_id": member["user_id"]}, {"_id": 0, "image_path": 0}).sort("created_at", 1).to_list(300)
+    return {"enabled": ent["plan_id"] in STORYBOOK_PLANS, "pages": pages}
+
+
+@api.get("/me/storybook/{page_id}/image")
+async def story_page_image(page_id: str, member: dict = Depends(current_member)):
+    p = await db.storybook_pages.find_one({"id": page_id, "user_id": member["user_id"]}, NOFIELDS)
+    if not p:
+        raise HTTPException(404, "Page not found")
+    try:
+        data, _ = get_object(p["image_path"])
+    except requests.RequestException:
+        raise HTTPException(400, "Couldn't load this page")
+    return Response(content=data, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})
+
+
+@api.delete("/me/storybook/{page_id}")
+async def delete_story_page(page_id: str, member: dict = Depends(current_member)):
+    p = await db.storybook_pages.find_one_and_delete({"id": page_id, "user_id": member["user_id"]})
+    if not p:
+        raise HTTPException(404, "Page not found")
+    await db.files.update_one({"storage_path": p["image_path"]}, {"$set": {"is_deleted": True}})
     return {"ok": True}
 
 
@@ -1904,8 +2114,8 @@ async def admin_set_site(body: SiteIn, member: dict = Depends(require_perm("sett
     if body.mt_enabled and not body.mt_start_at:
         raise HTTPException(400, "Set when maintenance starts (or press Start now).")
     vals = body.model_dump()
-    await settings_store.reset(db, "site")
-    await settings_store.save(db, "site", vals, member["user_id"], iso())
+    await settings_store.reset(cfg_db, "site")
+    await settings_store.save(cfg_db, "site", vals, member["user_id"], iso())
     await audit(member, "settings.site_updated", "site", {"coming_soon": body.cs_enabled, "maintenance": body.mt_enabled,
                                                            "launch_at": body.cs_launch_at, "mt_start_at": body.mt_start_at, "mt_minutes": body.mt_duration_min})
     _STAFF_CACHE.clear()

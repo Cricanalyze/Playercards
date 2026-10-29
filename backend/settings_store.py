@@ -5,7 +5,7 @@ from cryptography.fernet import Fernet, InvalidToken
 _CACHE: dict = {}
 _fernet = Fernet(os.environ["SETTINGS_ENC_KEY"].encode())
 
-SECRET_FIELDS = {"razorpay": {"key_secret", "webhook_secret"}, "email": {"smtp_pass"}, "clerk": {"webhook_secret"}}
+SECRET_FIELDS = {"razorpay": {"key_secret", "webhook_secret"}, "email": {"smtp_pass"}, "clerk": {"webhook_secret"}, "database": {"url"}}
 SOCIAL_KEYS = ("instagram", "facebook", "x", "youtube", "linkedin", "whatsapp", "telegram", "threads")
 
 
@@ -17,6 +17,8 @@ def env_defaults(section: str) -> dict:
         return {"webhook_secret": e("CLERK_WEBHOOK_SECRET", "")}
     if section == "social":
         return {k: "" for k in SOCIAL_KEYS}
+    if section == "database":
+        return {"enabled": False, "url": "", "db_name": ""}
     if section == "site":
         return {"cs_enabled": False, "cs_launch_at": "", "cs_title": "Something big is coming", "cs_message": "FlexoCards is getting ready to launch. Stay tuned!",
                 "cs_auto_open": True, "mt_enabled": False, "mt_start_at": "", "mt_duration_min": 60,

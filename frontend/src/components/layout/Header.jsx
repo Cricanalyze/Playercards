@@ -78,6 +78,7 @@ export default function Header() {
               <div className="flex flex-col gap-6 mt-10">
                 <NavItems prefix="mobile" onClick={() => setOpen(false)} />
                 <Show when="signed-in"><Link to="/dashboard" onClick={() => setOpen(false)} data-testid="mobile-nav-dashboard" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">My Cards</Link></Show>
+                <Show when="signed-in"><Link to="/storybook" onClick={() => setOpen(false)} data-testid="mobile-nav-storybook" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">My Storybook</Link></Show>
                 {me?.member?.can_blog && <Link to="/write" onClick={() => setOpen(false)} data-testid="mobile-nav-write" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Write a post</Link>}
                 {isStaff && <Link to="/admin" onClick={() => setOpen(false)} data-testid="mobile-nav-admin" className="text-sm font-semibold uppercase tracking-wider text-amber-500">Admin Panel</Link>}
                 <Link to="/create" onClick={() => setOpen(false)} data-testid="mobile-nav-create-cta" className="inline-flex items-center justify-center h-11 rounded-full bg-amber-500 text-slate-950 font-bold uppercase text-sm">Create Card</Link>

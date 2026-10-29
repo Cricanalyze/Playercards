@@ -24,7 +24,7 @@ function download(url, name) {
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
 }
 
-export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, onChooseTemplate, onNewCard, canSave = true, isPaid, ensureSaved, onExported }) {
+export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, onChooseTemplate, onNewCard, canSave = true, isPaid, ensureSaved, onExported, storybook }) {
   const api = useApi();
   const { refreshMe } = useAppData();
   const cardRef = useRef(null);
@@ -77,6 +77,8 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
     try {
       const r = await render(format);
       setResult(r);
+      if (storybook) api("post", "/me/storybook", { image: r.url, title: state.data.name || sport?.name || "", sport_id: sport?.id || "", template_id: template?.id || "", format: r.format })
+        .then(() => toast.success("Added to your storybook")).catch(() => {});
       setLink("");
       onExported?.();
       if (mode === "share") await shareResult(r);

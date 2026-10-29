@@ -33,6 +33,7 @@ import BlogPost from "@/pages/BlogPost";
 import Write from "@/pages/Write";
 import PostEditor from "@/pages/PostEditor";
 import SharedCard from "@/pages/SharedCard";
+import Storybook from "@/pages/Storybook";
 import ScreenGuard from "@/components/ScreenGuard";
 import SiteGate from "@/components/site/SiteGate";
 import { SiteStatusProvider } from "@/context/SiteStatus";
@@ -86,6 +87,7 @@ function App() {
                 <Route path="/blog/:slug" element={<BlogPost />} />
                 <Route path="/c/:shareId" element={<SharedCard />} />
                 <Route path="/write" element={<RequireAccount><Write /></RequireAccount>} />
+                <Route path="/storybook" element={<RequireAccount><Storybook /></RequireAccount>} />
                 <Route path="/write/:id" element={<RequireAccount><PostEditor /></RequireAccount>} />
                 <Route path="/sign-in/*" element={<AuthPage><SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" withSignUp /></AuthPage>} />
                 <Route path="/sign-up/*" element={<AuthPage><SignUp routing="path" path="/sign-up" signInUrl="/sign-in" /></AuthPage>} />
