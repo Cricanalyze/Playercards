@@ -7,6 +7,7 @@ import { useAppData } from "@/context/AppData";
 import { useSiteStatus } from "@/context/SiteStatus";
 import { SocialIcons } from "@/components/layout/Social";
 import { Countdown } from "./Countdown";
+import { SiteSkeleton } from "@/components/Skeletons";
 
 const OPEN_PATHS = ["/sign-in", "/sign-up", "/admin"];
 const fmt = (s) => new Date(s).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -59,11 +60,11 @@ export default function SiteGate({ children }) {
   const preview = new URLSearchParams(search).get("preview");
   const staff = !!me?.member?.role && me.member.role !== "user";
   const done = () => { refresh(); setTimeout(() => window.location.reload(), 1500); };
-  if (!status) return null;
+  if (!status) return <SiteSkeleton />;
   const open = OPEN_PATHS.some((p) => pathname.startsWith(p));
   if (staff && (preview === "coming_soon" || preview === "maintenance")) return <GatePage kind={preview} status={status} onDone={() => {}} />;
   if (status.blocked && !open && !staff) {
-    if (isSignedIn && !me) return null;
+    if (isSignedIn && !me) return <SiteSkeleton />;
     return <GatePage kind={status.state} status={status} onDone={done} />;
   }
   return (

@@ -15,6 +15,7 @@ import Templates from "./Templates";
 import Team from "./Team";
 import Audit from "./Audit";
 import Reports from "./Reports";
+import { AdminSkeleton } from "@/components/Skeletons";
 
 const MetaCtx = createContext(null);
 export const useMeta = () => useContext(MetaCtx);
@@ -51,7 +52,7 @@ function Shell() {
         <p className="text-muted-foreground mt-2">{err}</p><Link to="/" className="text-amber-500 hover:underline mt-4 inline-block">Back to home</Link></div>
     </div>
   );
-  if (!meta) return <div className="min-h-screen grid place-items-center text-muted-foreground">Loading admin…</div>;
+  if (!meta) return <div className="min-h-screen p-6 lg:p-10"><AdminSkeleton /></div>;
   const items = NAV.filter((n) => meta.my_perms.includes(n[3]));
   return (
     <MetaCtx.Provider value={meta}>

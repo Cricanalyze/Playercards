@@ -10,6 +10,7 @@ import { PageHead } from "./AdminApp";
 import { ClerkEmails, TemplatesPreview, SocialSettings } from "./SettingsExtra";
 import { SiteModeSettings } from "./SiteMode";
 import { DatabaseSettings } from "./DatabaseSettings";
+import { AdminSkeleton } from "@/components/Skeletons";
 
 const F = ({ label, hint, children }) => (
   <div className="space-y-1.5 min-w-0"><Label>{label}</Label>{children}{hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}</div>
@@ -131,7 +132,7 @@ export default function Settings() {
     if (!window.confirm("Go back to the default settings for this section?")) return;
     try { await api("delete", `/admin/settings/${section}`); toast.success("Reset to defaults"); await load(); setV(v + 1); } catch (e) { toast.error(errMsg(e)); }
   };
-  if (!d) return <p className="text-muted-foreground">Loading settings…</p>;
+  if (!d) return <AdminSkeleton />;
   return (
     <div className="space-y-6" data-testid="admin-settings">
       <PageHead title="Settings" sub="Site status, payments, email, sign-in emails and social links. Only Super Admins can see this page." />

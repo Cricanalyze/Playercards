@@ -13,6 +13,7 @@ import { fileUrl } from "@/lib/files";
 import { MarkdownEditor } from "@/components/blog/MarkdownEditor";
 import { useUpload } from "@/components/blog/useUpload";
 import { StatusBadge } from "@/components/blog/StatusBadge";
+import { PageSkeleton } from "@/components/Skeletons";
 
 const EMPTY = { title: "", excerpt: "", content: "", cover_image: "", category: "", tags: [], seo_title: "", seo_description: "", featured: false, status: "draft" };
 
@@ -49,9 +50,9 @@ export default function PostEditor() {
     if (isNew || !me?.member?.can_blog) return;
     api("get", `/me/posts/${id}`).then((d) => { setP(d); setTags((d.tags || []).join(", ")); }).catch((e) => { toast.error(errMsg(e)); nav("/write"); });
   }, [id, me]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!me) return <div className="container-x py-24 text-center text-muted-foreground">Loading…</div>;
+  if (!me) return <PageSkeleton variant="editor" />;
   if (!me.member.can_blog) return <Navigate to="/dashboard" replace />;
-  if (!p) return <div className="container-x py-24 text-center text-muted-foreground">Loading post…</div>;
+  if (!p) return <PageSkeleton variant="editor" />;
   const editor = me.member.perms.includes("blog.manage");
   const set = (k) => (e) => setP({ ...p, [k]: e?.target ? e.target.value : e });
 

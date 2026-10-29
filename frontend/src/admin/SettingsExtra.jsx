@@ -40,7 +40,7 @@ export function TemplatesPreview({ templates }) {
           </div>
           <div className="rounded-xl border border-border overflow-hidden bg-[#eef1f6]">
             {pv ? <iframe title="Email preview" srcDoc={pv.html} sandbox="" className="w-full h-[620px] bg-[#eef1f6]" data-testid="email-template-preview" />
-              : <div className="h-[620px] grid place-items-center text-sm text-slate-500">Loading preview…</div>}
+              : <div className="h-[620px] p-6 space-y-4"><div className="skeleton h-16 rounded-xl" /><div className="skeleton h-40 rounded-xl" /><div className="skeleton h-4 w-3/4 rounded" /><div className="skeleton h-4 w-2/3 rounded" /><div className="skeleton h-12 w-48 rounded-full" /></div>}
           </div>
         </div>
       </div>

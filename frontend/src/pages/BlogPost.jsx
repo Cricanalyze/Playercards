@@ -8,6 +8,7 @@ import { API } from "@/lib/api";
 import { fileUrl } from "@/lib/files";
 import { Markdown } from "@/components/blog/Markdown";
 import { PostCard, PostMeta } from "@/components/blog/PostCard";
+import { PageSkeleton } from "@/components/Skeletons";
 
 export default function BlogPost() {
   const { slug } = useParams();
@@ -19,7 +20,7 @@ export default function BlogPost() {
       .catch(() => setErr("This post doesn't exist or isn't published."));
   }, [slug]);
   if (err) return <div className="container-x py-24 text-center" data-testid="blog-post-not-found"><p className="text-muted-foreground">{err}</p><Link to="/blog" className="text-amber-500 hover:underline mt-3 inline-block">Back to blog</Link></div>;
-  if (!data) return <div className="container-x py-24 text-center text-muted-foreground">Loading…</div>;
+  if (!data) return <PageSkeleton variant="article" />;
   const { post: p, related } = data;
   const url = window.location.href;
   const share = async () => {

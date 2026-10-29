@@ -19,7 +19,7 @@ const Section = ({ id, eyebrow, title, sub, children }) => (
 
 const DemoCard = ({ i, width, style, className }) => {
   const { sports, templates } = useAppData();
-  if (!sports.length || !templates.length) return <div style={{ width, height: width * 1.4 }} className="rounded-2xl bg-muted animate-pulse" />;
+  if (!sports.length || !templates.length) return <div style={{ width, height: width * 1.4 }} className="skeleton rounded-2xl" />;
   const demo = demoFor(i, sports);
   return (
     <div className={className} style={style}>

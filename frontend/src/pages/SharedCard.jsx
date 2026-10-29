@@ -6,6 +6,7 @@ import { Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API, errMsg } from "@/lib/api";
 import { fileUrl } from "@/lib/files";
+import { PageSkeleton } from "@/components/Skeletons";
 
 export default function SharedCard() {
   const { shareId } = useParams();
@@ -21,7 +22,7 @@ export default function SharedCard() {
       <Button asChild className="rounded-full font-bold mt-6"><Link to="/create">Make your own card</Link></Button>
     </div>
   );
-  if (!card) return <div className="container-x py-24 text-center text-muted-foreground">Loading card…</div>;
+  if (!card) return <PageSkeleton variant="card" />;
   return (
     <div className="container-x py-10 sm:py-16 grid lg:grid-cols-2 gap-10 items-center" data-testid="shared-card-page">
       <div className="protect flex justify-center stage-grid rounded-3xl border border-border p-6 sm:p-10">

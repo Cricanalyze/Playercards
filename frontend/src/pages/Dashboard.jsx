@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useAppData } from "@/context/AppData";
 import { useApi, errMsg, fmtDate, fmtDateTime, inr } from "@/lib/api";
+import { PageSkeleton, ListSkeleton } from "@/components/Skeletons";
 
 function Inner() {
   const { me, meError, sports, templates, refreshMe } = useAppData();
@@ -17,7 +18,7 @@ function Inner() {
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (meError) return <div className="container-x py-24 text-center" data-testid="dashboard-error">{meError}</div>;
-  if (!me) return <div className="container-x py-24 text-center text-muted-foreground">Loading your account…</div>;
+  if (!me) return <PageSkeleton variant="dashboard" />;
   const { member, entitlements: ent, subscriptions, payments } = me;
   const del = async (id) => { try { await api("delete", `/me/cards/${id}`); toast.success("Card deleted"); load(); } catch (e) { toast.error(errMsg(e)); } };
   const unshare = async (id) => { try { await api("delete", `/me/cards/${id}/share`); toast.success("Public link turned off"); load(); } catch (e) { toast.error(errMsg(e)); } };
@@ -79,7 +80,7 @@ function Inner() {
         <h2 className="font-display font-black uppercase text-2xl">Saved cards</h2>
         <p className="text-sm text-muted-foreground">Only card details are saved — re-add your photo when you open one. Paid plans can edit a card for 6 hours after creating it.</p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4" data-testid="saved-cards-list">
-          {cards === null ? <p className="text-muted-foreground text-sm">Loading…</p> : cards.length === 0 ? <p className="text-sm text-muted-foreground" data-testid="saved-cards-empty">No saved cards yet.</p> :
+          {cards === null ? <ListSkeleton n={3} /> : cards.length === 0 ? <p className="text-sm text-muted-foreground" data-testid="saved-cards-empty">No saved cards yet.</p> :
             cards.map((c) => (
               <div key={c.id} className="rounded-xl border border-border p-4 flex items-center justify-between gap-3" data-testid={`saved-card-${c.id}`}>
                 <div className="min-w-0">

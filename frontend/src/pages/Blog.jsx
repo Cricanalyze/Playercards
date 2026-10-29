@@ -32,7 +32,7 @@ export default function Blog() {
         </div>
       )}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-10" data-testid="blog-post-list">
-        {data === null ? [0, 1, 2].map((i) => <div key={i} className="aspect-[4/3] rounded-2xl bg-muted animate-pulse" />)
+        {data === null ? [0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton aspect-[4/3] rounded-2xl" data-testid="blog-skeleton" />)
           : posts.length === 0 ? <p className="text-muted-foreground col-span-full" data-testid="blog-empty">No posts yet. Check back soon.</p>
           : posts.map((p, i) => <PostCard key={p.id} p={p} big={i === 0 && f.page === 1 && !f.q} />)}
       </div>

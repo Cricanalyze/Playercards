@@ -23,7 +23,7 @@ const Leaf = ({ page, url, n, side }) => (
   <div className={`h-full w-full bg-[#f7f3ea] text-slate-900 flex flex-col p-4 sm:p-5 ${side === "left" ? "rounded-l-xl" : "rounded-r-xl"}`}>
     <div className="flex-1 min-h-0 grid place-items-center protect">
       {url ? <img src={url} alt={page.title} draggable={false} className="max-h-full max-w-full object-contain drop-shadow-[0_12px_20px_rgba(0,0,0,.25)] rounded-md" />
-        : <div className="w-2/3 aspect-[5/7] rounded-md bg-slate-200 animate-pulse" />}
+        : <div className="w-2/3 aspect-[5/7] rounded-md skeleton" />}
     </div>
     <div className="pt-3 flex items-end justify-between gap-2 border-t border-slate-300/70 mt-3">
       <div className="min-w-0"><p className="font-display font-black uppercase truncate">{page.title}</p><p className="text-[11px] text-slate-500 truncate">{page.sport} · {fmtDate(page.created_at)}</p></div>

@@ -11,6 +11,7 @@ import { StoryViewer } from "@/components/storybook/StoryViewer";
 import { buildStorybookPdf } from "@/components/storybook/pdf";
 import { buildStoryVideo, buildFlipVideo, videoSupported } from "@/components/storybook/video";
 import { buildFlipbookHtml } from "@/components/storybook/flipbookHtml";
+import { PageSkeleton } from "@/components/Skeletons";
 
 const TABS = [["flip", "Flip-book", BookOpen], ["story", "Story video", Film], ["pdf", "PDF booklet", FileDown]];
 
@@ -38,7 +39,7 @@ export default function Storybook() {
   const pages = data?.pages || [];
   const { urls, blobs } = useStoryImages(pages);
   const name = me?.member?.name || "";
-  if (!data) return <div className="container-x py-24 text-center text-muted-foreground">Loading storybook…</div>;
+  if (!data) return <PageSkeleton variant="book" />;
   const del = async (p) => {
     if (!window.confirm("Remove this card from your storybook?")) return;
     try { await api("delete", `/me/storybook/${p.id}`); setData({ ...data, pages: pages.filter((x) => x.id !== p.id) }); toast.success("Removed"); } catch (e) { toast.error(errMsg(e)); }

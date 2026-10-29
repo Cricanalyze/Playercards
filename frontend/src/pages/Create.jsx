@@ -9,6 +9,7 @@ import { ScaledCard, useWidth } from "@/components/card/PlayerCard";
 import { blankData, blankPhoto, defaultShow } from "@/lib/cardUtils";
 import { SportPanel, TemplatePanel, PhotoPanel, DetailsPanel, StatsPanel, StylePanel, canUse } from "@/components/editor/Panels";
 import { ExportBar } from "@/components/editor/ExportBar";
+import { PageSkeleton } from "@/components/Skeletons";
 
 const TABS = [["sport", "1 Sport"], ["design", "2 Design"], ["photo", "3 Photo"], ["details", "4 Details"], ["stats", "5 Stats"], ["style", "6 Style"]];
 
@@ -139,7 +140,7 @@ export default function Create() {
 
   const newCard = () => { update({ data: blankData(sport), photo: blankPhoto }); setSavedId(null); setLoaded(null); setExported(false); startedAt.current = Date.now(); setParams({}, { replace: true }); setTab("photo"); };
 
-  if (!sport || !template) return <div className="container-x py-24 text-center text-muted-foreground" data-testid="editor-loading">Loading editor…</div>;
+  if (!sport || !template) return <div data-testid="editor-loading"><PageSkeleton variant="editor" /></div>;
   const locked = !canUse(template, ent);
   const paid = !!ent && ent.plan_id !== "free";
   const editUntil = startedAt.current + EDIT_MS;

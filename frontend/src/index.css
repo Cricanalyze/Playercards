@@ -103,6 +103,12 @@
 .prose-blog table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
 .prose-blog th, .prose-blog td { border: 1px solid hsl(var(--border)); padding: .5em .8em; text-align: left; }
 
+.skeleton { position: relative; overflow: hidden; background: hsl(var(--muted)); }
+.skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(245,180,0,.10), rgba(255,255,255,.10), transparent); animation: shimmer 1.4s ease-in-out infinite; }
+@keyframes shimmer { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .skeleton::after { animation: none; } }
+
 @keyframes page-next { from { transform: rotateY(-28deg) translateX(4%); opacity: .2; } to { transform: none; opacity: 1; } }
 @keyframes page-prev { from { transform: rotateY(28deg) translateX(-4%); opacity: .2; } to { transform: none; opacity: 1; } }
 .page-turn-next { transform-origin: left center; animation: page-next .55s cubic-bezier(.2,.7,.2,1) both; }

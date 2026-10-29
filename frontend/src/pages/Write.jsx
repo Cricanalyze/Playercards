@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useAppData } from "@/context/AppData";
 import { useApi, errMsg, fmtDate } from "@/lib/api";
 import { StatusBadge } from "@/components/blog/StatusBadge";
+import { PageSkeleton, ListSkeleton } from "@/components/Skeletons";
 
 export default function Write() {
   const { me } = useAppData();
@@ -13,7 +14,7 @@ export default function Write() {
   const [posts, setPosts] = useState(null);
   const load = () => api("get", "/me/posts").then(setPosts).catch(() => setPosts([]));
   useEffect(() => { if (me?.member?.can_blog) load(); }, [me]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!me) return <div className="container-x py-24 text-center text-muted-foreground">Loading…</div>;
+  if (!me) return <PageSkeleton variant="list" />;
   if (!me.member.can_blog) return <Navigate to="/dashboard" replace />;
   const del = async (id) => {
     if (!window.confirm("Delete this post? This cannot be undone.")) return;
@@ -28,7 +29,7 @@ export default function Write() {
         <Button asChild className="rounded-full font-bold" data-testid="new-post-button"><Link to="/write/new"><Plus className="w-4 h-4 mr-1" />New post</Link></Button>
       </div>
       <div className="mt-8 rounded-2xl border border-border divide-y divide-border" data-testid="my-posts-list">
-        {posts === null ? <p className="p-6 text-sm text-muted-foreground">Loading…</p>
+        {posts === null ? <div className="p-2"><ListSkeleton n={3} /></div>
           : posts.length === 0 ? <p className="p-6 text-sm text-muted-foreground" data-testid="my-posts-empty">No posts yet. Write your first one.</p>
           : posts.map((p) => (
             <div key={p.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3" data-testid={`my-post-${p.id}`}>

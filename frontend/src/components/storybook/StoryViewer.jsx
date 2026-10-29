@@ -71,7 +71,7 @@ export function StoryViewer({ pages, urls, blobs, start = 0, onClose }) {
         </div>
         <div key={p.id} className="absolute inset-0 grid place-items-center p-4 pt-24 pb-10 rise">
           {urls[p.id] ? <img src={urls[p.id]} alt={p.title} draggable={false} className="max-h-full max-w-full object-contain rounded-lg drop-shadow-[0_20px_40px_rgba(0,0,0,.5)]" />
-            : <div className="w-3/4 aspect-[5/7] rounded-lg bg-white/10 animate-pulse" />}
+            : <div className="w-3/4 aspect-[5/7] rounded-lg skeleton" />}
         </div>
         <p className="absolute bottom-3 inset-x-0 text-center text-[10px] tracking-[0.3em] uppercase text-white/50">Tap · swipe · hold to pause</p>
       </div>
