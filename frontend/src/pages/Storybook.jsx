@@ -9,7 +9,8 @@ import { useStoryImages } from "@/components/storybook/useStoryImages";
 import { FlipBook } from "@/components/storybook/FlipBook";
 import { StoryViewer } from "@/components/storybook/StoryViewer";
 import { buildStorybookPdf } from "@/components/storybook/pdf";
-import { buildStoryVideo, videoSupported } from "@/components/storybook/video";
+import { buildStoryVideo, buildFlipVideo, videoSupported } from "@/components/storybook/video";
+import { buildFlipbookHtml } from "@/components/storybook/flipbookHtml";
 
 const TABS = [["flip", "Flip-book", BookOpen], ["story", "Story video", Film], ["pdf", "PDF booklet", FileDown]];
 
@@ -30,6 +31,8 @@ export default function Storybook() {
   const [story, setStory] = useState(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [vid, setVid] = useState(null);
+  const [flipVid, setFlipVid] = useState(null);
+  const [htmlBusy, setHtmlBusy] = useState(false);
   const load = () => api("get", "/me/storybook").then(setData).catch((e) => { toast.error(errMsg(e)); setData({ enabled: false, pages: [] }); });
   useEffect(() => { load(); document.title = "My Storybook · FlexoCards"; }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const pages = data?.pages || [];
@@ -45,6 +48,21 @@ export default function Storybook() {
     try { const n = await buildStorybookPdf(pages, blobs, name); toast.success(`PDF ready with ${n} cards`); } catch { toast.error("Couldn't build the PDF. Try again."); } finally { setPdfBusy(false); }
   };
   const ready = pages.filter((p) => urls[p.id]).length;
+  const saveBlob = (blob, file) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = file; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  };
+  const flipFile = async () => {
+    setHtmlBusy(true);
+    try { const n = await buildFlipbookHtml(pages, blobs, name); toast.success(`Flip-book file ready with ${n} cards. Open it in any browser.`); }
+    catch { toast.error("Couldn't build the flip-book. Try again."); } finally { setHtmlBusy(false); }
+  };
+  const flipVideo = async () => {
+    setFlipVid(0);
+    try { const r = await buildFlipVideo(pages, urls, name, setFlipVid); saveBlob(r.blob, `flexocards-flipbook-${new Date().toISOString().slice(0, 10)}.${r.ext}`); toast.success(`Flip-book video ready (${r.seconds} sec)`); }
+    catch { toast.error("Couldn't make the video in this browser. Try Chrome or Safari."); } finally { setFlipVid(null); }
+  };
   const video = async () => {
     setVid(0);
     try {
@@ -80,7 +98,19 @@ export default function Storybook() {
             </div>
           ) : (
             <div className="mt-8">
-              {tab === "flip" && <FlipBook pages={pages} urls={urls} name={name} />}
+              {tab === "flip" && (
+                <>
+                  <FlipBook pages={pages} urls={urls} name={name} />
+                  <div className="mt-6 flex flex-wrap justify-center gap-2" data-testid="flipbook-downloads">
+                    <Button onClick={flipFile} disabled={htmlBusy || ready === 0 || flipVid !== null} className="rounded-full font-bold" data-testid="flipbook-download-html">
+                      {htmlBusy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <BookOpen className="w-4 h-4 mr-1" />}Download flip-book</Button>
+                    <Button variant="outline" onClick={flipVideo} disabled={flipVid !== null || ready === 0 || !videoSupported()} className="rounded-full font-bold" data-testid="flipbook-download-video">
+                      {flipVid !== null ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Film className="w-4 h-4 mr-1" />}
+                      {flipVid !== null ? `Making video… ${Math.round(flipVid * 100)}%` : `Page-turn video (${(ready + 1) * 3} sec)`}</Button>
+                  </div>
+                  <p className="text-[11px] text-center text-muted-foreground mt-2">The flip-book file works offline: open it in any browser and turn the pages. {flipVid !== null && "Keep this tab open while the video records."}</p>
+                </>
+              )}
               {tab === "story" && (
                 <div className="rounded-3xl border border-border p-8 text-center bg-[#0b1a3a] text-white" data-testid="storybook-story-panel">
                   <Film className="w-8 h-8 mx-auto text-amber-400" />
