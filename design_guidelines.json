@@ -1,0 +1,121 @@
+{
+  "app_name": "FlexoCards",
+  "design_archetype": "Trading Card Collector & Stadium Arena (Anti-AI Physical Craft)",
+  "emotional_tone": "High-octane, physical collector nostalgia, stadium floodlight energy, premium athletic craft",
+  "theme_strategy": "Dual theme support. Dark Pitch mode (default for gaming & stadium vibe) and Stadium Chalk light mode with physical paper/foil textures.",
+  "typography": {
+    "display_font": "Barlow Condensed, sans-serif",
+    "body_font": "DM Sans, sans-serif",
+    "mono_font": "JetBrains Mono, monospace",
+    "special_font": "Unbounded, Barlow Condensed, sans-serif",
+    "rules": [
+      "Headings must use font-display ('Barlow Condensed') with tracking-tight or tracking-tighter for heavy-weight athletic feel.",
+      "Card stats, rarity numbers, and pricing tags must use font-mono ('JetBrains Mono') with uppercase tracking-widest.",
+      "Never use default generic sans for section titles or hero headlines.",
+      "H1 ceiling: text-4xl sm:text-5xl lg:text-6xl maximum."
+    ]
+  },
+  "colors": {
+    "dark_theme": {
+      "background": "#07090E",
+      "surface": "#0F141C",
+      "surface_border": "#1E293B",
+      "foreground": "#F8FAFC",
+      "primary": "#F59E0B",
+      "primary_glow": "rgba(245, 158, 11, 0.35)",
+      "accent_cyan": "#00F0FF",
+      "accent_emerald": "#10B981",
+      "accent_rose": "#FF2E63",
+      "card_slab": "#131924",
+      "holographic_gradient": "linear-gradient(135deg, rgba(255,0,122,0.4), rgba(0,240,255,0.4), rgba(255,230,0,0.4), rgba(0,255,102,0.4))"
+    },
+    "light_theme": {
+      "background": "#F6F4EF",
+      "surface": "#FFFFFF",
+      "surface_border": "#E2E8F0",
+      "foreground": "#0F172A",
+      "primary": "#D97706",
+      "primary_glow": "rgba(217, 119, 6, 0.2)",
+      "accent_cyan": "#0284C7",
+      "accent_emerald": "#059669",
+      "accent_rose": "#E11D48",
+      "card_slab": "#FFFFFF",
+      "holographic_gradient": "linear-gradient(135deg, rgba(236,72,153,0.25), rgba(14,165,233,0.25), rgba(234,179,8,0.25))"
+    }
+  },
+  "visual_enhancers": {
+    "3d_tilt_cards": {
+      "description": "Interactive mouse/touch tracking 3D tilt with real perspective, dynamic holographic reflection, glare sheen overlay, and 3D double-sided flip button to view card stats & authentication slab data.",
+      "styles": "perspective: 1000px, transform-style: preserve-3d, transition: transform 0.1s ease-out"
+    },
+    "3d_stadium_scroll_stage": {
+      "description": "Scroll-driven 3D stadium tunnel with angled grid pitch lines, glowing spotlight cones, and floating collector cards flying in 3D perspective along scroll position.",
+      "implementation": "Framer Motion useScroll + useTransform on CSS 3D perspective containers, lightweight for mid-range mobile performance."
+    },
+    "collector_slab_badges": {
+      "description": "PSA/BGS-style physical grading slab tops (e.g. 'FLEXO GEM MT 10', 'LIMITED EDITION #001/500', holographic foil stamps, gold foil embossed borders)."
+    },
+    "texture_overlay": {
+      "description": "Subtle paper grain / noise SVG overlay combined with metallic inner strokes to give cards a real printed card stock weight."
+    }
+  },
+  "image_urls": {
+    "stadium_bg": "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwzfHxzcG9ydHMlMjB0cmFkaW5nJTIwY2FyZCUyMHN0YWRpdW0lMjBhY3Rpb24lMjBjcmlja2V0JTIwZm9vdGx8ZW58MHx8fHwxNzk0MzAzNzU1fDA&ixlib=rb-4.1.0&q=85",
+    "cricket_pitch": "https://images.unsplash.com/photo-1512719994953-eabf50895df7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwxfHxzcG9ydHMlMjB0cmFkaW5nJTIwY2FyZCUyMHN0YWRpdW0lMjBhY3Rpb24lMjBjcmlja2V0JTIwZm9vdGJhbGx8ZW58MHx8fHwxNzk0MzAzNzU1fDA&ixlib=rb-4.1.0&q=85",
+    "soccer_field": "https://images.unsplash.com/photo-1522778119026-d647f0596c20?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwyfHxzcG9ydHMlMjB0cmFkaW5nJTIwY2FyZCUyMHN0YWRpdW0lMjBhY3Rpb24lMjBjcmlja2V0JTIwZm9vdGJhbGx8ZW58MHx8fHwxNzk0MzAzNzU1fDA&ixlib=rb-4.1.0&q=85"
+  },
+  "page_blueprints": {
+    "Header": {
+      "path": "/app/frontend/src/components/layout/Header.jsx",
+      "features": "Crystal glassmorphism bar (backdrop-blur-xl), FlexoCards 3D collector logo with metallic badge, links (Home, Explore, Create Card, Pricing, Blog, Help), theme toggle, Sign In / Dashboard CTA, mobile slide-over binder drawer."
+    },
+    "Home": {
+      "path": "/app/frontend/src/pages/Home.jsx",
+      "sections": [
+        "Hero Section: 3D stadium floodlight arena with 3 interactive floating 3D player cards that tilt on mouse movement and flip on click to show stats & QR code.",
+        "Live Collector Ticker: Animated marquee showcasing recent Indian community card creations (Cricket, Kabaddi, BGMI, Football, Chess).",
+        "Sports Directory Preview: Interactive search + category chips (60+ sports/esports) with 3D card preview cards.",
+        "3D Card Showcase & Tier Gallery: Interactive 25+ templates with free/basic/pro/premium/exclusive tier filters and holographic foil previews.",
+        "Scroll-Driven 3D Stadium Stage: How It Works 4-step interactive binder journey (1. Select Sport, 2. Customize Stats & Photos, 3. Add Holo Foil & Grading, 4. Print / Share & Monetize).",
+        "Community & Benefits Bento Grid: High-density asymmetry showing Razorpay instant checkout, HD PDF/PNG export, print-ready 300 DPI, and social collection links.",
+        "Pricing Preview: Quick view of plan tiers with INR currency toggle.",
+        "FAQ Accordion & Contact Form: Anti-AI styled interactive dropdowns and contact box."
+      ]
+    },
+    "Explore": {
+      "path": "/app/frontend/src/pages/Explore.jsx",
+      "features": "Collector Binder Grid view, 60+ sports search, category filter chips (Cricket, Kabaddi, Football, Esports, Badminton, Chess...), template tier badges, 3D card hover tilt & quick view modal."
+    },
+    "Pricing": {
+      "path": "/app/frontend/src/pages/Pricing.jsx",
+      "features": "4 plans (Free, Starter, Collector Pro, Academy/Club), Monthly vs Yearly billing toggle in INR, Razorpay badge, feature comparison table, FAQ."
+    },
+    "Blog": {
+      "path": "/app/frontend/src/pages/Blog.jsx",
+      "features": "Collector Journal magazine layout, featured article hero with holographic badge, sports card news grid, tag filters, newsletter subscription."
+    },
+    "Help": {
+      "path": "/app/frontend/src/pages/Help.jsx",
+      "features": "Knowledge base binder, search bar, topic category cards, contact support form, interactive video guide previews."
+    },
+    "Footer": {
+      "path": "/app/frontend/src/components/layout/Footer.jsx",
+      "features": "Massive 3D metallic 'FLEXOCARDS' display logo watermark, newsletter box, sports catalog quick links, legal/privacy links, Indian payment trust badges (Razorpay, UPI, Cards)."
+    }
+  },
+  "instructions_to_main_agent": [
+    "Redesign ONLY the public pages (Home, Explore, Pricing, Blog, Help, Header, Footer). DO NOT touch card editor, dashboard, or admin components.",
+    "Ensure all components are implemented in .jsx files.",
+    "Keep existing data-testid attributes intact on interactive elements.",
+    "Incorporate 3D card tilt using CSS perspective and framer-motion mouse movement.",
+    "Implement double-sided 3D card flip so users can flip player cards to view stats, radar chart, or collector QR codes.",
+    "Ensure mobile responsiveness (390px+) with smooth performance on mid-range Android devices.",
+    "Ensure high contrast in both Light (Stadium Chalk) and Dark (Pitch Obsidian) themes."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Avoid generic AI templates, centered plain cards, or standard SaaS layouts.",
+    "Never use raw transparent backgrounds on dropdowns or floating headers; always use backdrop-blur glassmorphism or solid surfaces with 1px crisp borders.",
+    "Include data-testid attributes on all interactive elements.",
+    "Never apply universal CSS transition: all; specify properties explicitly."
+  ]
+}

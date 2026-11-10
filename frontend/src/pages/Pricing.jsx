@@ -4,6 +4,7 @@ import { PaidHighlights } from "@/components/PaidHighlights";
 import { useState } from "react";
 import { CheckoutExtras } from "@/lib/checkout";
 import { CheckoutOptions, TopUps } from "@/components/Store";
+import { PageHero } from "@/components/arena/Bits";
 
 const TERMS = [
   ["Monthly vs yearly", "Monthly gives 1 month of access; yearly gives 12 months for the price of 10. Plans don't auto-renew — renew or switch any time."],
@@ -19,18 +20,18 @@ export default function Pricing() {
   const [extras, setExtras] = useState({ coupon: "", billing: {} });
   return (
     <CheckoutExtras.Provider value={extras}>
-    <div className="container-x py-12" data-testid="pricing-page">
-      <p className="eyebrow">Plans in INR</p>
-      <h1 className="font-display font-black uppercase text-4xl sm:text-5xl lg:text-6xl">Simple, fair pricing</h1>
-      <p className="text-muted-foreground mt-3 max-w-xl">Basic card creation is free forever. Prices below come directly from our plan settings.</p>
+    <div data-testid="pricing-page">
+      <PageHero eyebrow="Plans in INR" title="Simple, fair pricing" sub="Basic card creation is free forever. Prices below come directly from our plan settings." />
+      <div className="container-x py-12">
       <CheckoutOptions extras={extras} setExtras={setExtras} />
       <div className="mt-8"><PricingGrid plans={plans} /></div>
       <TopUps />
       <PaidHighlights />
-      <div className="mt-16 grid md:grid-cols-2 gap-6">
-        {TERMS.map(([t, d]) => (
-          <div key={t} className="rounded-2xl border border-border p-6"><p className="font-display font-bold uppercase text-xl">{t}</p><p className="text-sm text-muted-foreground mt-2">{d}</p></div>
+      <div className="mt-16 grid md:grid-cols-2 gap-x-6 gap-y-10">
+        {TERMS.map(([t, d], i) => (
+          <div key={t} className="paper relative rounded-md border border-border p-6 pt-7" style={{ transform: `rotate(${i % 2 ? 0.7 : -0.7}deg)` }}><span className="tape" /><p className="font-poster font-black uppercase text-2xl leading-none">{t}</p><p className="text-sm text-muted-foreground mt-2">{d}</p></div>
         ))}
+      </div>
       </div>
     </div>
     </CheckoutExtras.Provider>

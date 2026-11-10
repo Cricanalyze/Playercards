@@ -31,7 +31,7 @@ const ThemeToggle = () => {
 const NavItems = ({ onClick, prefix }) =>
   NAV.map((n) => (
     <NavLink key={n.id} to={n.to} end={n.to === "/"} onClick={onClick} data-testid={`${prefix}-nav-${n.id}`}
-      className={({ isActive }) => `text-sm font-semibold uppercase tracking-wider transition-colors hover:text-amber-500 ${isActive ? "text-amber-500" : "text-muted-foreground"}`}>
+      className={({ isActive }) => `relative font-poster font-black text-[15px] uppercase tracking-[0.12em] transition-colors hover:text-amber-500 ${isActive ? "text-amber-500 nav-active" : "text-muted-foreground"}`}>
       {n.label}
     </NavLink>
   ));
@@ -66,9 +66,9 @@ export default function Header() {
           <Show when="signed-out">
             <Link to="/sign-in" data-testid="header-sign-in-link" className="hidden sm:inline-flex text-sm font-semibold px-3 h-9 items-center hover:text-amber-500 transition-colors">Sign in</Link>
           </Show>
-          <Button asChild className="hidden md:inline-flex rounded-full font-bold uppercase tracking-wide hover:bg-amber-400 hover:text-slate-950" data-testid="header-create-card-button">
-            <Link to="/create">Create Card</Link>
-          </Button>
+          <Link to="/create" data-testid="header-create-card-button" className="press hidden md:inline-flex items-center h-10 px-5 rounded-full bg-amber-400 text-slate-950 font-poster font-black uppercase tracking-wide -rotate-2 hover:bg-amber-300">
+            Create Card
+          </Link>
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
               <button className="lg:hidden w-10 h-10 grid place-items-center rounded-full border border-border" data-testid="mobile-menu-button" aria-label="Open menu"><Menu className="w-5 h-5" /></button>
