@@ -1,0 +1,32 @@
+{
+  "summary": "Tested the Emergent managed email setup on the backend and in the UI. Backend: 9/9 pytest checks passed (tests/test_email_emergent.py). GET /api/admin/settings reports email.provider='emergent' and does not expose smtp_pass. POST /api/admin/settings/email/test returns 200 {ok:true, provider:'emergent', to:qa.admin+clerk_test@example.com}, and the newest email_log entry is kind='test', status='sent', provider='emergent', with no _id. All 11 template previews render. Sending a sample (welcome, because no storybook sample exists) returned 200 and was logged as 'sent'. The admin endpoints return 401/403 without auth. The upstream Emergent API returned 202 Accepted (backend log). UI: signed in as the QA admin and opened /admin/settings. Clicking 'Send me a test email' showed the success toast 'Test email sent to qa.admin+clerk_test@example.com'. The previews for Welcome, Payment receipt, Admin invitation and Verification code show the correct subjects and branded HTML. Regressions: /api/, /api/store and the home page all return 200. In total 3 real emails were sent, all to the QA admin address.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/admin/settings (templates) and /api/admin/settings/email/preview/{tid}", "issue": "The storybook_reminder, purchase (pack/storybook receipt) and referral_reward templates are not in email_templates.SAMPLES, so admins cannot preview or send a sample of them. The Storybook reminder in particular cannot be previewed."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Admin Settings > Email templates preview iframe", "issue": "The FlexoCards logo image is broken in the preview. craco.config.js sets the header Cross-Origin-Resource-Policy: same-origin on every frontend asset, and a sandboxed srcDoc iframe has an opaque origin, so the browser blocks /logo-wordmark.png. Webmail clients that load images directly in the browser without a proxy would also show a broken logo in real emails.", "selector": "[data-testid=email-template-preview]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_email_emergent.py", "/app/test_reports/pytest/email_emergent.xml"],
+  "action_items": [
+    "Allow cross-origin loading of the email images: either set Cross-Origin-Resource-Policy to cross-origin for /logo-wordmark.png and the other email images, or relax the header in craco.config.js and the production server config. This fixes the broken logo in the preview and in some webmail clients.",
+    "Optional: add storybook_reminder, purchase and referral_reward to ET.SAMPLES so admins can preview them."
+  ],
+  "critical_code_review_comments": [
+    "notify() uses asyncio.create_task and keeps no reference to the task. The event loop can garbage-collect such tasks before they finish. Keep the tasks in a module-level set.",
+    "_deliver catches only EmailError, ValueError and httpx.HTTPError. Any other exception escapes inside the background task, and no email_log entry is written for it.",
+    "The storybook reminder loop runs inside every backend worker. With more than one worker, the atomic update_one guard prevents duplicate emails, but each worker repeats the scan."
+  ],
+  "updated_files": ["/app/backend/tests/test_email_emergent.py"],
+  "success_rate": {"backend": "100%", "frontend": "100% (one medium cosmetic issue: broken logo in the template preview)"},
+  "seed_data_creation": "None. 3 email_log entries were added: kind 'test' twice and 'sample:welcome' once, all sent to qa.admin+clerk_test@example.com.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run 'cd /app/backend && python3 qa_users.py tokens' to get the admin bearer token (it prints JSON). Sign in through the Clerk UI with input[name=identifier], then .cl-formButtonPrimary, then input[name=password], then .cl-formButtonPrimary. Test IDs: email-test-button, email-template-{id}, email-template-preview (iframe), email-template-subject. The test email endpoint is rate limited (5) and always sends to the admin's own address."
+}

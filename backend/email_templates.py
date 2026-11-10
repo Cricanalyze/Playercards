@@ -118,4 +118,7 @@ SAMPLES = {
     "blog_published": ("Blog post published", lambda: blog_published("10 tips for a killer cricket card", "sample-post")),
     "blog_rejected": ("Blog post needs changes", lambda: blog_rejected("My first post", "Please add a cover image and fix the title.")),
     "blog_author": ("Blog access granted", blog_author),
+    "purchase": ("Add-on purchase receipt", lambda: purchase("Storybook add-on (90 days)", 69, [("Storybook active until", "2027-02-01")], "pay_SAMPLE12345")),
+    "storybook_reminder": ("Storybook ending reminder", lambda: storybook_reminder("2026-12-01")),
+    "referral_reward": ("Referral reward", lambda: referral_reward(2, "Rohit")),
 }
