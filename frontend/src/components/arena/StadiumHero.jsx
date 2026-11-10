@@ -1,9 +1,12 @@
-import { useRef } from "react";
+import { Suspense, lazy, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { DemoTilt } from "./TiltCard";
 import { Lights, STADIUM_IMG } from "./Bits";
+import { hasWebGL } from "@/components/three/webgl";
+
+const HeroScene = lazy(() => import("@/components/three/HeroScene"));
 
 const small = () => typeof window !== "undefined" && window.innerWidth < 640;
 
@@ -16,6 +19,7 @@ export function StadiumHero() {
   const scale = useTransform(p, [0, 1], [1, 1.18]);
   const bg = useTransform(p, [0, 1], ["0%", "18%"]);
   const sm = small();
+  const [gl] = useState(hasWebGL);
   return (
     <section ref={ref} className="night overflow-hidden" data-testid="stadium-hero">
       <motion.img src={STADIUM_IMG} alt="" style={{ y: bg }} className="absolute inset-0 w-full h-[115%] object-cover opacity-25 -z-10" />
@@ -37,12 +41,20 @@ export function StadiumHero() {
           <p className="mt-6 text-xs text-slate-400">Free account · 2 card downloads a month · Photos stay on your device</p>
         </div>
         <div className="relative h-[430px] sm:h-[560px]" data-testid="hero-demo-cards">
-          <motion.div style={{ y: yL, rotate: -11 }} className="absolute -left-10 sm:left-0 top-24 sm:top-20 opacity-90"><DemoTilt i={1} width={sm ? 150 : 220} testid="hero-card-left" /></motion.div>
-          <motion.div style={{ y: yR, rotate: 10 }} className="absolute -right-10 sm:right-0 top-28 sm:top-28 opacity-90"><DemoTilt i={2} width={sm ? 150 : 220} testid="hero-card-right" /></motion.div>
-          <div className="absolute inset-x-0 top-0 flex justify-center z-10">
-            <motion.div style={{ scale, rotate: rot }}><DemoTilt i={0} width={sm ? 220 : 270} slab testid="hero-card-main" /></motion.div>
-          </div>
-          <p className="absolute z-20 bottom-2 sm:bottom-4 right-2 sm:right-10 font-marker text-amber-300 text-sm sm:text-base rotate-[-6deg]" data-testid="hero-flip-hint">↖ tap a card to flip it</p>
+          {gl ? (
+            <div className="absolute inset-0 -mx-6 sm:mx-0">
+              <Suspense fallback={<div className="absolute inset-0 grid place-items-center"><div className="w-[220px] aspect-[5/7] rounded-2xl skeleton" /></div>}><HeroScene mobile={sm} /></Suspense>
+            </div>
+          ) : (
+            <>
+              <motion.div style={{ y: yL, rotate: -11 }} className="absolute -left-10 sm:left-0 top-24 sm:top-20 opacity-90"><DemoTilt i={1} width={sm ? 150 : 220} testid="hero-card-left" /></motion.div>
+              <motion.div style={{ y: yR, rotate: 10 }} className="absolute -right-10 sm:right-0 top-28 sm:top-28 opacity-90"><DemoTilt i={2} width={sm ? 150 : 220} testid="hero-card-right" /></motion.div>
+              <div className="absolute inset-x-0 top-0 flex justify-center z-10">
+                <motion.div style={{ scale, rotate: rot }}><DemoTilt i={0} width={sm ? 220 : 270} slab testid="hero-card-main" /></motion.div>
+              </div>
+            </>
+          )}
+          <p className="absolute z-20 bottom-2 sm:bottom-4 right-2 sm:right-10 font-marker text-amber-300 text-sm sm:text-base rotate-[-6deg] pointer-events-none" data-testid="hero-flip-hint">{gl ? "↖ drag the card to spin it" : "↖ tap a card to flip it"}</p>
           <span className="absolute bottom-0 left-0 text-[10px] uppercase tracking-widest text-slate-500">Fictional demo players</span>
         </div>
       </div>
