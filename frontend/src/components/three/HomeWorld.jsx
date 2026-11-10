@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Float, Stars, Sparkles, AdaptiveDpr, PerformanceMonitor } from "@react-three/drei";
+import { Float, Stars, Sparkles, PerformanceMonitor } from "@react-three/drei";
 import * as THREE from "three";
 import { Card3D, useCardImages } from "./Card3D";
 import { Ground, Stands, Floodlights } from "./StadiumScene";
@@ -105,16 +105,44 @@ function BouncingBall() {
   return <group ref={ball} scale={0.7}><CricketBall /></group>;
 }
 
+function ledTexture() {
+  const c = document.createElement("canvas");
+  c.width = 1024; c.height = 64;
+  const g = c.getContext("2d");
+  g.fillStyle = "#05070B"; g.fillRect(0, 0, 1024, 64);
+  g.font = "900 44px 'Big Shoulders Display', sans-serif"; g.textBaseline = "middle";
+  ["FLEXOCARDS", "CREATE", "CUSTOMIZE", "SHARE"].forEach((w, k) => { g.fillStyle = k % 2 ? "#5CF2FF" : "#F59E0B"; g.fillText(`${w}  ★`, 20 + k * 250, 34); });
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.RepeatWrapping;
+  t.repeat.set(10, 1);
+  return t;
+}
+
+// Scrolling LED advertising boards around the boundary.
+function LedBoards() {
+  const tex = useMemo(ledTexture, []);
+  useFrame((_, dt) => { tex.offset.x -= dt * 0.04; });
+  return (
+    <mesh position={[0, 0.6, 0]}>
+      <cylinderGeometry args={[34.5, 34.5, 1.2, 96, 1, true]} />
+      <meshBasicMaterial map={tex} side={THREE.BackSide} toneMapped={false} />
+    </mesh>
+  );
+}
+
 const SPOTS = [[0, 1.95, 0, 0.35], [-3.4, 1.95, 1.6, -0.25], [3.4, 1.95, 1.6, 0.25]];
 
 export default function HomeWorld({ mobile }) {
-  const { cards, node } = useCardImages([0, 1, 2]);
+  const { cards, node } = useCardImages(mobile ? [0] : [0, 1, 2]);
+  const [dpr, setDpr] = useState(mobile ? 1 : 1.3);
   return (
     <>
       {node}
-      <div className="fixed inset-0 -z-10 bg-[#06080D]" data-testid="home-3d-world">
-        <Canvas dpr={mobile ? 1 : [1, 1.4]} camera={{ position: [-16, 30, 60], fov: mobile ? 60 : 48, far: 280 }}
-          gl={{ antialias: !mobile, powerPreference: "high-performance" }} performance={{ min: 0.6 }} style={{ pointerEvents: "none" }}>
+      <div className="fixed inset-0 -z-10 bg-[#06080D] animate-[fadeIn_.8s_ease]" data-testid="home-3d-world">
+        <Canvas dpr={dpr} camera={{ position: [-16, 30, 60], fov: mobile ? 60 : 48, far: 280 }}
+          gl={{ antialias: !mobile, powerPreference: "high-performance", stencil: false }} style={{ pointerEvents: "none" }}>
+          <PerformanceMonitor onDecline={() => setDpr(mobile ? 0.75 : 1)} onIncline={() => setDpr(mobile ? 1 : 1.3)} />
           <color attach="background" args={["#06080D"]} />
           <fog attach="fog" args={["#06080D", 50, 160]} />
           <hemisphereLight args={["#cfe0ff", "#0b2a14", 0.6]} />
@@ -122,10 +150,11 @@ export default function HomeWorld({ mobile }) {
           <spotLight position={[-40, 45, -40]} angle={0.6} penumbra={0.7} intensity={1800} color="#FFF2D6" />
           <pointLight position={[0, 6, 2]} intensity={70} color="#F59E0B" />
           <pointLight position={[0, 5, -15]} intensity={60} color="#FFD43B" />
-          <Stars radius={150} depth={30} count={mobile ? 500 : 1400} factor={4} fade />
+          <Stars radius={150} depth={30} count={mobile ? 300 : 1200} factor={4} fade />
           <Ground />
-          <Stands crowd={mobile ? 700 : 2400} />
-          <Floodlights count={4} />
+          <LedBoards />
+          <Stands crowd={mobile ? 600 : 2400} />
+          <Floodlights count={4} cones={!mobile} />
           <Scoreboard />
           <SkyObjects mobile={mobile} />
           {SPOTS.map(([x, y, z, r], k) => cards[k] && (
@@ -134,13 +163,11 @@ export default function HomeWorld({ mobile }) {
           <group position={[0, 0, -17]}>
             <mesh position={[0, 0.4, 0]}><cylinderGeometry args={[1.6, 1.8, 0.8, 32]} /><meshStandardMaterial color="#141A26" metalness={0.4} roughness={0.4} /></mesh>
             <group position={[0, 1.5, 0]}><Trophy /></group>
-            <Sparkles count={mobile ? 20 : 45} scale={[5, 5, 4]} position={[0, 3, 0]} size={3} speed={0.4} color="#FFD43B" />
+            {!mobile && <Sparkles count={45} scale={[5, 5, 4]} position={[0, 3, 0]} size={3} speed={0.4} color="#FFD43B" />}
           </group>
           <group position={[0, 0.55, 10]}><Stumps /></group>
           <BouncingBall />
           <Rig />
-          <PerformanceMonitor />
-          <AdaptiveDpr pixelated={false} />
         </Canvas>
       </div>
     </>

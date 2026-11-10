@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Share2, Users, Smartphone, Lock, Layers, Shirt } from "lucide-react";
 import { useAppData } from "@/context/AppData";
@@ -96,10 +96,17 @@ const Cta = () => (
 export default function Home() {
   const { sports, plans } = useAppData();
   const [gl] = useState(hasWebGL);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    // Mount the 3D stadium only after the page has painted, so text and buttons show instantly.
+    const t = window.requestIdleCallback ? window.requestIdleCallback(() => setReady(true), { timeout: 900 }) : setTimeout(() => setReady(true), 300);
+    return () => (window.cancelIdleCallback ? window.cancelIdleCallback(t) : clearTimeout(t));
+  }, []);
   const mobile = typeof window !== "undefined" && window.innerWidth < 640;
+  const still = <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_60%_80%,#0f3a1f_0%,#06080D_60%)]" />;
   return (
     <div data-testid="home-page" className="dark overflow-x-clip text-foreground pb-10">
-      {gl ? <Suspense fallback={<div className="fixed inset-0 -z-10 bg-[#06080D]" />}><HomeWorld mobile={mobile} /></Suspense> : <div className="fixed inset-0 -z-10 bg-[#06080D]" />}
+      {gl && ready ? <Suspense fallback={still}><HomeWorld mobile={mobile} /></Suspense> : still}
       <StadiumHero />
       <SportsTicker />
       <Section id="sports" n="01" eyebrow="Sports & games directory" title="Every sport. Every game." sub="Choose your sport to load the right stats — runs and wickets for cricket, raid points for kabaddi, ACS for Valorant.">

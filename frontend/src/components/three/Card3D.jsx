@@ -3,14 +3,18 @@ import { createPortal } from "react-dom";
 import { useFrame } from "@react-three/fiber";
 import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
-import { toPng } from "html-to-image";
+import { toJpeg } from "html-to-image";
 import { PlayerCard } from "@/components/card/PlayerCard";
 import { useAppData } from "@/context/AppData";
 import { demoFor } from "@/lib/cardUtils";
 
 export { hasWebGL } from "./webgl";
 
-// Renders real FlexoCards cards off-screen and snapshots them for use as 3D textures.
+const idle = () => new Promise((r) => (window.requestIdleCallback ? window.requestIdleCallback(r, { timeout: 1500 }) : setTimeout(r, 300)));
+const cacheKey = (it) => `fc3d:${it.template.id}:${it.i}`;
+const readCache = (it) => { try { return sessionStorage.getItem(cacheKey(it)); } catch { return null; } };
+
+// Renders real FlexoCards cards off-screen and snapshots them (cached per session) for use as 3D textures.
 export function useCardImages(indices) {
   const { sports, templates } = useAppData();
   const refs = useRef([]);
@@ -20,26 +24,31 @@ export function useCardImages(indices) {
     const demo = demoFor(i, sports);
     return { i, demo, template: templates.find((t) => t.id === demo.templateId) };
   }).filter((x) => x.template) : []), [sports, templates, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const todo = items.filter((it) => !readCache(it));
   useEffect(() => {
     if (!items.length) return;
+    const cached = Object.fromEntries(items.map((it) => [it.i, readCache(it)]).filter(([, u]) => u));
+    if (Object.keys(cached).length) setUrls((m) => ({ ...m, ...cached }));
     let off = false;
     (async () => {
       await document.fonts.ready;
-      await new Promise((r) => setTimeout(r, 400));
       for (const it of items) {
+        if (cached[it.i]) continue;
+        await idle();
         try {
           const el = refs.current[it.i];
-          if (!el) continue;
-          const u = await toPng(el, { pixelRatio: 1.1 });
-          if (!off && u) setUrls((m) => ({ ...m, [it.i]: u }));
+          if (!el || off) continue;
+          const u = await toJpeg(el, { pixelRatio: 1, quality: 0.85, backgroundColor: "#0B0F17" });
+          try { sessionStorage.setItem(cacheKey(it), u); } catch { /* storage full */ }
+          if (!off) setUrls((m) => ({ ...m, [it.i]: u }));
         } catch { /* keeps placeholder face */ }
       }
     })();
     return () => { off = true; };
   }, [items]);
-  const node = items.length ? createPortal(
+  const node = todo.length ? createPortal(
     <div aria-hidden style={{ position: "fixed", left: -10000, top: 0, pointerEvents: "none" }}>
-      {items.map((it) => <PlayerCard key={it.i} ref={(el) => { refs.current[it.i] = el; }} template={it.template} sport={it.demo.sport} data={it.demo.data} photo={it.demo.photo} />)}
+      {todo.map((it) => <PlayerCard key={it.i} ref={(el) => { refs.current[it.i] = el; }} template={it.template} sport={it.demo.sport} data={it.demo.data} photo={it.demo.photo} />)}
     </div>, document.body) : null;
   return { cards: items.map((it) => ({ ...it, url: urls[it.i] })), node };
 }
@@ -90,15 +99,15 @@ export function Card3D({ url, demo, spin = 0.35 }) {
   return (
     <group ref={g}>
       <RoundedBox args={[2.5, 3.5, 0.09]} radius={0.06} smoothness={4}>
-        <meshPhysicalMaterial color="#C9A227" metalness={1} roughness={0.22} clearcoat={1} />
+        <meshStandardMaterial color="#C9A227" metalness={1} roughness={0.22} />
       </RoundedBox>
       <mesh position={[0, 0, 0.047]}>
         <planeGeometry args={[2.36, 3.36]} />
-        <meshPhysicalMaterial key={front ? "tex" : "plain"} map={front || back} roughness={0.35} clearcoat={1} clearcoatRoughness={0.1} />
+        <meshStandardMaterial key={front ? "tex" : "plain"} map={front || back} roughness={0.32} metalness={0.05} />
       </mesh>
       <mesh position={[0, 0, -0.047]} rotation={[0, Math.PI, 0]}>
         <planeGeometry args={[2.36, 3.36]} />
-        <meshPhysicalMaterial map={back} roughness={0.4} clearcoat={1} />
+        <meshStandardMaterial map={back} roughness={0.4} />
       </mesh>
     </group>
   );

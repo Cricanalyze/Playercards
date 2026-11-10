@@ -170,6 +170,7 @@
 @media (prefers-reduced-motion: reduce) { .floodlight, .marquee { animation: none; } }
 .cl-footer > :not(.cl-footerAction) { display: none !important; }
 .cl-userButtonPopoverFooter { display: none !important; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .cl-userProfile-root .cl-footer, .cl-userProfileModal .cl-footer, .cl-navbar .cl-footer { display: none !important; }
 .cl-footer:not(:has(.cl-footerAction)) { display: none !important; }
 .cl-footerItem, .cl-navbar [class*="cl-footer"], .cl-userProfile-root [class*="cl-footerPages"] { display: none !important; }

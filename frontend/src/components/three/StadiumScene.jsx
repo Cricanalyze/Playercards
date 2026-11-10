@@ -71,7 +71,7 @@ export function Stands({ crowd }) {
   );
 }
 
-export function Floodlights({ count }) {
+export function Floodlights({ count, cones = true }) {
   return Array.from({ length: count }, (_, i) => {
     const a = Math.PI / 4 + (i * Math.PI * 2) / count;
     const p = [Math.cos(a) * 58, 0, Math.sin(a) * 58];
@@ -79,10 +79,10 @@ export function Floodlights({ count }) {
       <group key={i} position={p} rotation={[0, -a - Math.PI / 2, 0]}>
         <mesh position={[0, 16, 0]}><cylinderGeometry args={[0.35, 0.6, 32, 10]} /><meshStandardMaterial color="#2a3242" /></mesh>
         <mesh position={[0, 33, 0]} rotation={[0.45, 0, 0]}><boxGeometry args={[7, 4, 0.6]} /><meshStandardMaterial color="#FFF6DA" emissive="#FFF6DA" emissiveIntensity={3} /></mesh>
-        <mesh position={[0, 22, 14]} rotation={[-1.05, 0, 0]}>
+        {cones && <mesh position={[0, 22, 14]} rotation={[-1.05, 0, 0]}>
           <coneGeometry args={[9, 34, 24, 1, true]} />
           <meshBasicMaterial color="#FFF2C8" transparent opacity={0.05} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
-        </mesh>
+        </mesh>}
       </group>
     );
   });
