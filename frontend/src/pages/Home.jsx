@@ -2,7 +2,9 @@ import { Suspense, lazy, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Share2, Users, Smartphone, Lock, Layers, Shirt } from "lucide-react";
 import { useAppData } from "@/context/AppData";
-import { demoFor } from "@/lib/cardUtils";
+import { demoFor, blankData, blankPhoto } from "@/lib/cardUtils";
+import { useApi } from "@/lib/api";
+import { recallCard } from "@/lib/lastCard";
 import { SportsGrid } from "@/components/SportsGrid";
 import { PricingGrid } from "@/components/PricingGrid";
 import { FaqList, ContactForm } from "@/components/Support";
@@ -93,8 +95,32 @@ const Cta = () => (
   </section>
 );
 
+function useMyLatestCard() {
+  const { isSignedIn, me, sports, templates } = useAppData();
+  const api = useApi();
+  const [mine, setMine] = useState(null);
+  const uid = me?.member?.user_id;
+  useEffect(() => {
+    if (!isSignedIn || !uid || !sports.length || !templates.length) { setMine(null); return; }
+    const local = recallCard(uid);
+    const build = (src, url) => {
+      const sport = sports.find((s) => s.id === src.sport_id);
+      const template = templates.find((t) => t.id === src.template_id);
+      if (!sport || !template) return null;
+      return { id: src.id || "local", updated_at: src.updated_at || src.at, url, sport, template, photo: blankPhoto, data: { ...blankData(sport), ...src.data } };
+    };
+    api("get", "/me/cards").then((cards) => {
+      const c = cards[0];
+      const useLocal = local && (!c || local.at >= new Date(c.updated_at).getTime() - 60000);
+      setMine(useLocal ? build(local, local.url) : c ? build(c, null) : null);
+    }).catch(() => setMine(local ? build(local, local.url) : null));
+  }, [isSignedIn, uid, sports, templates]); // eslint-disable-line react-hooks/exhaustive-deps
+  return mine;
+}
+
 export default function Home() {
   const { sports, plans } = useAppData();
+  const mine = useMyLatestCard();
   const [gl] = useState(hasWebGL);
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -106,8 +132,8 @@ export default function Home() {
   const still = <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_60%_80%,#0f3a1f_0%,#06080D_60%)]" />;
   return (
     <div data-testid="home-page" className="dark overflow-x-clip text-foreground pb-10">
-      {gl && ready ? <Suspense fallback={still}><HomeWorld mobile={mobile} /></Suspense> : still}
-      <StadiumHero />
+      {gl && ready ? <Suspense fallback={still}><HomeWorld mobile={mobile} mine={mine} /></Suspense> : still}
+      <StadiumHero mine={gl ? mine : null} />
       <SportsTicker />
       <Section id="sports" n="01" eyebrow="Sports & games directory" title="Every sport. Every game." sub="Choose your sport to load the right stats — runs and wickets for cricket, raid points for kabaddi, ACS for Valorant.">
         <SportsGrid sports={sports} linkMode />

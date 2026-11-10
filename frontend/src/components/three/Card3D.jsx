@@ -15,15 +15,15 @@ const cacheKey = (it) => `fc3d:${it.template.id}:${it.i}`;
 const readCache = (it) => { try { return sessionStorage.getItem(cacheKey(it)); } catch { return null; } };
 
 // Renders real FlexoCards cards off-screen and snapshots them (cached per session) for use as 3D textures.
-export function useCardImages(indices) {
+export function useCardImages(indices, extra = []) {
   const { sports, templates } = useAppData();
   const refs = useRef([]);
   const [urls, setUrls] = useState({});
-  const key = indices.join(",");
-  const items = useMemo(() => (sports.length && templates.length ? indices.map((i) => {
+  const key = indices.join(",") + extra.map((x) => x.i).join(",");
+  const items = useMemo(() => (sports.length && templates.length ? [...indices.map((i) => {
     const demo = demoFor(i, sports);
     return { i, demo, template: templates.find((t) => t.id === demo.templateId) };
-  }).filter((x) => x.template) : []), [sports, templates, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), ...extra].filter((x) => x.template) : []), [sports, templates, key]); // eslint-disable-line react-hooks/exhaustive-deps
   const todo = items.filter((it) => !readCache(it));
   useEffect(() => {
     if (!items.length) return;

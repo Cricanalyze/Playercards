@@ -10,6 +10,7 @@ import { PlayerCard, StoryCard } from "@/components/card/PlayerCard";
 import { useApi, errMsg, newRequestId } from "@/lib/api";
 import { featuresUsed } from "@/lib/cardUtils";
 import { useAppData } from "@/context/AppData";
+import { rememberCard } from "@/lib/lastCard";
 
 const slug = (s) => (s || "player").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "player";
 const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -27,7 +28,7 @@ function download(url, name) {
 export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, onChooseTemplate, onNewCard, canSave = true, isPaid, ensureSaved, onExported, storybook, ent }) {
   const [noWm, setNoWm] = useState(false);
   const api = useApi();
-  const { refreshMe } = useAppData();
+  const { refreshMe, me } = useAppData();
   const cardRef = useRef(null);
   const storyRef = useRef(null);
   const created = useRef(false);
@@ -63,6 +64,7 @@ export function ExportBar({ state, sport, template, onSave, saving, isSignedIn, 
     await toPng(node, opts);
     if (isIOS()) await toPng(node, opts);
     const url = await toPng(node, opts);
+    if (format === "card" && me?.member?.user_id) rememberCard(url, me.member.user_id, { sport_id: sport.id, template_id: template.id, data: state.data }).catch(() => {});
     if (!created.current) {
       created.current = true;
       api("post", "/events", { type: "card_created", sport_id: sport.id, template_id: template.id }).catch(() => {});

@@ -71,21 +71,36 @@ export function Stands({ crowd }) {
   );
 }
 
-export function Floodlights({ count, cones = true }) {
-  return Array.from({ length: count }, (_, i) => {
-    const a = Math.PI / 4 + (i * Math.PI * 2) / count;
-    const p = [Math.cos(a) * 58, 0, Math.sin(a) * 58];
-    return (
-      <group key={i} position={p} rotation={[0, -a - Math.PI / 2, 0]}>
-        <mesh position={[0, 16, 0]}><cylinderGeometry args={[0.35, 0.6, 32, 10]} /><meshStandardMaterial color="#2a3242" /></mesh>
-        <mesh position={[0, 33, 0]} rotation={[0.45, 0, 0]}><boxGeometry args={[7, 4, 0.6]} /><meshStandardMaterial color="#FFF6DA" emissive="#FFF6DA" emissiveIntensity={3} /></mesh>
-        {cones && <mesh position={[0, 22, 14]} rotation={[-1.05, 0, 0]}>
-          <coneGeometry args={[9, 34, 24, 1, true]} />
-          <meshBasicMaterial color="#FFF2C8" transparent opacity={0.05} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
-        </mesh>}
-      </group>
-    );
+// Match-night switch-on: each tower flickers then locks on, one after another.
+export const towerLevel = (t, i) => {
+  const on = 0.6 + i * 0.7;
+  if (t < on) return 0.02;
+  if (t < on + 0.45) return Math.sin(t * 55 + i) > 0.1 ? 1 : 0.08;
+  return 1;
+};
+
+function Tower({ i, a, cones, intro }) {
+  const head = useRef();
+  const cone = useRef();
+  useFrame(({ clock }) => {
+    const k = intro ? towerLevel(clock.elapsedTime, i) : 1;
+    if (head.current) head.current.emissiveIntensity = 3 * k;
+    if (cone.current) cone.current.opacity = 0.05 * k;
   });
+  return (
+    <group position={[Math.cos(a) * 58, 0, Math.sin(a) * 58]} rotation={[0, -a - Math.PI / 2, 0]}>
+      <mesh position={[0, 16, 0]}><cylinderGeometry args={[0.35, 0.6, 32, 10]} /><meshStandardMaterial color="#2a3242" /></mesh>
+      <mesh position={[0, 33, 0]} rotation={[0.45, 0, 0]}><boxGeometry args={[7, 4, 0.6]} /><meshStandardMaterial ref={head} color="#FFF6DA" emissive="#FFF6DA" emissiveIntensity={3} /></mesh>
+      {cones && <mesh position={[0, 22, 14]} rotation={[-1.05, 0, 0]}>
+        <coneGeometry args={[9, 34, 24, 1, true]} />
+        <meshBasicMaterial ref={cone} color="#FFF2C8" transparent opacity={0.05} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>}
+    </group>
+  );
+}
+
+export function Floodlights({ count, cones = true, intro = false }) {
+  return Array.from({ length: count }, (_, i) => <Tower key={i} i={i} a={Math.PI / 4 + (i * Math.PI * 2) / count} cones={cones} intro={intro} />);
 }
 
 function Rig({ p }) {

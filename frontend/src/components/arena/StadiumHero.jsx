@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 
 // Hero copy; the 3D stadium world sits behind it (see HomeWorld).
-export function StadiumHero() {
+export function StadiumHero({ mine }) {
   return (
     <section id="top" className="relative overflow-hidden text-slate-50" data-testid="stadium-hero">
       <div className="absolute inset-0 bg-gradient-to-r from-[#06080D]/90 via-[#06080D]/45 to-transparent pointer-events-none" />
@@ -20,6 +20,12 @@ export function StadiumHero() {
               Explore designs</Link>
           </div>
           <p className="mt-6 text-xs text-slate-300">Free account · 2 card downloads a month · Photos stay on your device</p>
+          {mine && (
+            <button type="button" onClick={() => document.getElementById("templates")?.scrollIntoView({ behavior: "smooth" })} data-testid="hero-your-card-note"
+              className="mt-5 inline-flex items-center gap-2 sticker sticker-cyan text-sm">
+              Your card “{mine.data?.name || mine.sport?.name}” is standing on the pitch ↓
+            </button>
+          )}
         </div>
       </div>
       <p className="absolute bottom-6 left-1/2 -translate-x-1/2 font-marker text-amber-300 text-sm animate-bounce pointer-events-none" data-testid="hero-scroll-hint">scroll to enter the stadium ↓</p>

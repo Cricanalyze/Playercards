@@ -3,7 +3,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { Float, Stars, Sparkles, PerformanceMonitor } from "@react-three/drei";
 import * as THREE from "three";
 import { Card3D, useCardImages } from "./Card3D";
-import { Ground, Stands, Floodlights } from "./StadiumScene";
+import { Ground, Stands, Floodlights, towerLevel } from "./StadiumScene";
 import { CricketBall, Football, Basketball, Shuttle, Pawn, Stumps, Trophy } from "./SportsObjects";
 
 const v = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -133,8 +133,44 @@ function LedBoards() {
 
 const SPOTS = [[0, 1.95, 0, 0.35], [-3.4, 1.95, 1.6, -0.25], [3.4, 1.95, 1.6, 0.25]];
 
-export default function HomeWorld({ mobile }) {
-  const { cards, node } = useCardImages(mobile ? [0] : [0, 1, 2]);
+// Main stadium lights ramp up as the towers switch on.
+function IntroLights() {
+  const a = useRef();
+  const b = useRef();
+  const h = useRef();
+  useFrame(({ clock }) => {
+    const t = clock.elapsedTime;
+    const k = Math.min(1, Math.max(0, (t - 0.6) / 2.6));
+    if (a.current) a.current.intensity = 2500 * towerLevel(t, 0) * k;
+    if (b.current) b.current.intensity = 1800 * towerLevel(t, 2) * k;
+    if (h.current) h.current.intensity = 0.15 + 0.45 * k;
+  });
+  return (
+    <>
+      <hemisphereLight ref={h} args={["#cfe0ff", "#0b2a14", 0.15]} />
+      <spotLight ref={a} position={[40, 45, 40]} angle={0.6} penumbra={0.7} intensity={0} color="#FFF2D6" />
+      <spotLight ref={b} position={[-40, 45, -40]} angle={0.6} penumbra={0.7} intensity={0} color="#FFF2D6" />
+    </>
+  );
+}
+
+function MyCardSpot() {
+  const ring = useRef();
+  useFrame(({ clock }) => { if (ring.current) ring.current.material.opacity = 0.55 + Math.sin(clock.elapsedTime * 2) * 0.25; });
+  return (
+    <group position={[0, 0.05, 0]}>
+      <mesh ref={ring} rotation-x={-Math.PI / 2}><ringGeometry args={[1.9, 2.2, 64]} /><meshBasicMaterial color="#F59E0B" transparent opacity={0.6} toneMapped={false} /></mesh>
+      <pointLight position={[0, 4, 3]} intensity={50} color="#FFE7A3" />
+    </group>
+  );
+}
+
+export default function HomeWorld({ mobile, mine }) {
+  const extra = mine && !mine.url ? [{ i: `mine-${mine.id}-${mine.updated_at}`, demo: { sport: mine.sport, data: mine.data, photo: mine.photo }, template: mine.template }] : [];
+  const { cards, node } = useCardImages(mobile ? [0] : [0, 1, 2], extra);
+  const mineUrl = mine && (mine.url || cards.find((c) => String(c.i).startsWith("mine-"))?.url);
+  const mineDemo = useMemo(() => (mine ? { sport: mine.sport, data: mine.data } : null), [mine]);
+  const demoCards = cards.filter((c) => !String(c.i).startsWith("mine-"));
   const [dpr, setDpr] = useState(mobile ? 1 : 1.3);
   return (
     <>
@@ -145,21 +181,24 @@ export default function HomeWorld({ mobile }) {
           <PerformanceMonitor onDecline={() => setDpr(mobile ? 0.75 : 1)} onIncline={() => setDpr(mobile ? 1 : 1.3)} />
           <color attach="background" args={["#06080D"]} />
           <fog attach="fog" args={["#06080D", 50, 160]} />
-          <hemisphereLight args={["#cfe0ff", "#0b2a14", 0.6]} />
-          <spotLight position={[40, 45, 40]} angle={0.6} penumbra={0.7} intensity={2500} color="#FFF2D6" />
-          <spotLight position={[-40, 45, -40]} angle={0.6} penumbra={0.7} intensity={1800} color="#FFF2D6" />
+          <IntroLights />
           <pointLight position={[0, 6, 2]} intensity={70} color="#F59E0B" />
           <pointLight position={[0, 5, -15]} intensity={60} color="#FFD43B" />
           <Stars radius={150} depth={30} count={mobile ? 300 : 1200} factor={4} fade />
           <Ground />
           <LedBoards />
           <Stands crowd={mobile ? 600 : 2400} />
-          <Floodlights count={4} cones={!mobile} />
+          <Floodlights count={4} cones={!mobile} intro />
           <Scoreboard />
           <SkyObjects mobile={mobile} />
-          {SPOTS.map(([x, y, z, r], k) => cards[k] && (
-            <group key={k} position={[x, y, z]} rotation={[0, r, 0]} scale={k ? 0.8 : 1}><Card3D url={cards[k].url} demo={cards[k].demo} spin={k ? 0 : 0.35} /></group>
-          ))}
+          {SPOTS.map(([x, y, z, r], k) => {
+            if (k === 0 && mine) return (
+              <group key="mine" position={[x, y, z]}><Card3D url={mineUrl} demo={mineDemo} spin={0.35} /></group>
+            );
+            const c = demoCards[k];
+            return c && <group key={k} position={[x, y, z]} rotation={[0, r, 0]} scale={k ? 0.8 : 1}><Card3D url={c.url} demo={c.demo} spin={k ? 0 : 0.35} /></group>;
+          })}
+          {mine && <MyCardSpot />}
           <group position={[0, 0, -17]}>
             <mesh position={[0, 0.4, 0]}><cylinderGeometry args={[1.6, 1.8, 0.8, 32]} /><meshStandardMaterial color="#141A26" metalness={0.4} roughness={0.4} /></mesh>
             <group position={[0, 1.5, 0]}><Trophy /></group>
