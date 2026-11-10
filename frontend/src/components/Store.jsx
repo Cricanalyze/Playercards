@@ -74,7 +74,7 @@ export function TopUps() {
       <p className="eyebrow">No subscription needed</p>
       <h2 className="font-display font-black uppercase text-3xl sm:text-4xl mt-1">Top-ups & extras</h2>
       <p className="text-sm text-muted-foreground mt-2 max-w-xl">Out of cards this month? Grab a pack. Pack cards never expire and are used after your monthly credits.</p>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mt-6">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
         {st.packs.map((p, i) => (
           <div key={p.id} className={`rounded-2xl border p-5 flex flex-col ${i === 1 ? "border-amber-500" : "border-border"}`} data-testid={`pack-${p.id}`}>
             <Zap className="w-5 h-5 text-amber-500" />
@@ -90,6 +90,14 @@ export function TopUps() {
           <p className="text-3xl font-display font-black mt-1">{inr(st.storybook_price || 29)}</p>
           <p className="text-xs text-muted-foreground">30 days · flip-book, story video & PDF of every card you download</p>
           <div className="mt-auto"><Btn kind="storybook" id="30d">Unlock 30 days</Btn></div>
+        </div>
+        <div className="rounded-2xl border border-amber-500 p-5 flex flex-col relative" data-testid="storybook-bundle">
+          <span className="absolute -top-3 right-4 text-[10px] font-bold uppercase tracking-widest bg-amber-500 text-slate-950 px-2 py-0.5 rounded">Best value</span>
+          <BookOpen className="w-5 h-5 text-amber-500" />
+          <p className="font-display font-black uppercase text-2xl mt-2">Storybook × 3</p>
+          <p className="text-3xl font-display font-black mt-1">{inr(st.storybook_bundle_price || 69)}</p>
+          <p className="text-xs text-muted-foreground">90 days · for players who make cards every week</p>
+          <div className="mt-auto"><Btn kind="storybook" id="90d">Unlock 90 days</Btn></div>
         </div>
         <div className="rounded-2xl border border-border p-5 flex flex-col" data-testid="watermark-single">
           <Droplets className="w-5 h-5 text-amber-500" />

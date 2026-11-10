@@ -21,7 +21,7 @@ def env_defaults(section: str) -> dict:
         return {"enabled": False, "url": "", "db_name": ""}
     if section == "store":
         return {"packs": [{"id": "pack3", "cards": 3, "price": 9}, {"id": "pack10", "cards": 10, "price": 25}, {"id": "pack25", "cards": 25, "price": 49}],
-                "wm_price": 5, "wm_bundle_qty": 5, "wm_bundle_price": 19, "storybook_price": 29, "ref_enabled": True, "ref_reward_cards": 2, "ref_max_rewards": 50}
+                "wm_price": 5, "wm_bundle_qty": 5, "wm_bundle_price": 19, "storybook_price": 29, "storybook_bundle_price": 69, "ref_enabled": True, "ref_reward_cards": 2, "ref_max_rewards": 50}
     if section == "invoice":
         return {"legal_name": "Buddy Innovations and Technologies Private Limited", "gstin": "", "address": "", "state": "", "state_code": "",
                 "gst_rate": 18, "inclusive": True, "sac": "998439", "prefix": "FC", "email": "", "phone": ""}

@@ -27,6 +27,13 @@ def purchase(item: str, amount, details: list, payment_id: str):
               ("Create a card", "/create"), [("Item", item), ("Amount paid", f"₹{amount}"), *details, ("Payment ID", payment_id)], "Payment receipt")
 
 
+def storybook_reminder(until: str):
+    return _t("Your FlexoCards Storybook ends soon", "Your storybook ends in 3 days",
+              [f"Your Storybook add-on ends on {until}. After that, new cards you download won't be added to it.",
+               "Renew now to keep adding cards. Renewing adds time on top of what you have left, so you lose nothing."],
+              ("Renew my storybook", "/storybook"), [("Ends on", until)], "Storybook reminder")
+
+
 def referral_reward(cards: int, friend: str):
     return _t("You earned free FlexoCards credits", f"+{cards} free cards",
               [f"{friend or 'A friend'} joined FlexoCards with your invite link, so you both got {cards} bonus card downloads.",

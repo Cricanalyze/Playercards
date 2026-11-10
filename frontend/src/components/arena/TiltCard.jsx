@@ -1,8 +1,32 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, useMotionValue, useSpring, useTransform, useMotionTemplate } from "framer-motion";
 import { ScaledCard } from "@/components/card/PlayerCard";
 import { useAppData } from "@/context/AppData";
 import { demoFor } from "@/lib/cardUtils";
+
+const clamp = (v) => Math.min(1, Math.max(0, v));
+const isTouch = () => typeof window !== "undefined" && window.matchMedia?.("(hover: none)").matches;
+
+// iOS only allows motion sensors after a tap; Android works straight away.
+export const askTiltPermission = () => {
+  const D = window.DeviceOrientationEvent;
+  if (isTouch() && D && typeof D.requestPermission === "function") D.requestPermission().catch(() => {});
+};
+
+function useDeviceTilt(px, py) {
+  useEffect(() => {
+    if (!isTouch() || !window.DeviceOrientationEvent) return;
+    let base = null;
+    const on = (e) => {
+      if (e.beta == null || e.gamma == null) return;
+      if (base === null) base = e.beta;
+      px.set(clamp(0.5 + e.gamma / 50));
+      py.set(clamp(0.5 + (e.beta - base) / 50));
+    };
+    window.addEventListener("deviceorientation", on);
+    return () => window.removeEventListener("deviceorientation", on);
+  }, [px, py]);
+}
 
 const CardBack = ({ sport, data, serial }) => (
   <div className="face absolute inset-0 rounded-[14px] overflow-hidden night border border-amber-500/40 p-[7%] flex flex-col text-left" style={{ transform: "rotateY(180deg)" }}>
@@ -32,12 +56,14 @@ export function TiltCard({ width, template, sport, data, photo, flip = true, sla
   const gx = useTransform(px, (v) => `${v * 100}%`);
   const gy = useTransform(py, (v) => `${v * 100}%`);
   const glare = useMotionTemplate`radial-gradient(circle at ${gx} ${gy}, rgba(255,255,255,.42), transparent 48%)`;
-  const move = (e) => { const r = e.currentTarget.getBoundingClientRect(); px.set((e.clientX - r.left) / r.width); py.set((e.clientY - r.top) / r.height); };
-  const leave = () => { px.set(0.5); py.set(0.5); };
+  const move = (e) => { if (e.pointerType === "touch") return; const r = e.currentTarget.getBoundingClientRect(); px.set((e.clientX - r.left) / r.width); py.set((e.clientY - r.top) / r.height); };
+  const leave = (e) => { if (e.pointerType === "touch") return; px.set(0.5); py.set(0.5); };
+  useDeviceTilt(px, py);
+  const tap = () => { askTiltPermission(); if (flip) setFlipped((f) => !f); };
   const h = width * 1.4;
   return (
     <div style={{ width, perspective: 1100, fontSize: width / 20 }}>
-      <motion.div onPointerMove={move} onPointerLeave={leave} onClick={flip ? () => setFlipped((f) => !f) : undefined}
+      <motion.div onPointerMove={move} onPointerLeave={leave} onClick={tap}
         style={{ rotateX: rx, rotateY: ry, transformStyle: "preserve-3d" }} className={flip ? "cursor-pointer" : ""} data-testid={testid}>
         {slab && (
           <div className="mb-2 rounded-md bg-gradient-to-r from-slate-200 to-white text-slate-900 px-3 py-1.5 flex justify-between items-center font-mono text-[10px] uppercase tracking-widest shadow" style={{ transform: "translateZ(30px)" }}>

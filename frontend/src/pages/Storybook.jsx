@@ -19,15 +19,20 @@ const TABS = [["flip", "Flip-book", BookOpen], ["story", "Story video", Film], [
 
 const Upsell = ({ onDone }) => {
   const { buy, busy } = useCheckout();
-  const [price, setPrice] = useState(29);
-  useEffect(() => { axios.get(`${API}/store`).then((r) => setPrice(r.data.storybook_price || 29)).catch(() => {}); }, []);
+  const [price, setPrice] = useState({ storybook_price: 29, storybook_bundle_price: 69 });
+  useEffect(() => { axios.get(`${API}/store`).then((r) => setPrice(r.data)).catch(() => {}); }, []);
+  const go = async (id) => { await buy("storybook", id); onDone(); };
   return (
     <div className="rounded-3xl border border-amber-500/40 bg-amber-500/5 p-8 sm:p-12 text-center max-w-2xl mx-auto" data-testid="storybook-upsell">
       <Lock className="w-8 h-8 text-amber-500 mx-auto" />
       <h2 className="font-display font-black uppercase text-3xl sm:text-4xl mt-4">Unlock your storybook</h2>
-      <p className="text-muted-foreground mt-3 text-sm sm:text-base">Storybook is an add-on on any plan, Free included. For 30 days every card you download is saved here. Flip through it like an album, play it as a story video, or download it as a printable PDF.</p>
-      <Button onClick={async () => { await buy("storybook", "30d"); onDone(); }} disabled={!!busy} className="rounded-full font-bold mt-6" data-testid="storybook-upgrade-button">
-        {busy && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Unlock for {inr(price)} · 30 days</Button>
+      <p className="text-muted-foreground mt-3 text-sm sm:text-base">Storybook is an add-on on any plan, Free included. While it's active, every card you download is saved here. Flip through it like an album, play it as a story video, or download it as a printable PDF.</p>
+      <div className="flex flex-wrap justify-center gap-3 mt-6">
+        <Button onClick={() => go("30d")} disabled={!!busy} className="rounded-full font-bold" data-testid="storybook-upgrade-button">
+          {busy === "storybook-30d" && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Unlock for {inr(price.storybook_price || 29)} · 30 days</Button>
+        <Button onClick={() => go("90d")} disabled={!!busy} variant="outline" className="rounded-full font-bold border-amber-500" data-testid="storybook-bundle-button">
+          {busy === "storybook-90d" && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}{inr(price.storybook_bundle_price || 69)} · 90 days (save more)</Button>
+      </div>
       <p className="text-xs text-muted-foreground mt-3">One-time payment, no auto-renewal. Pages you've already saved stay after it ends.</p>
     </div>
   );

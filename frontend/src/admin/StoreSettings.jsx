@@ -17,7 +17,7 @@ export function StoreSettings({ data, onSaved }) {
   const setPack = (i, k, v) => setF({ ...f, packs: f.packs.map((p, j) => (j === i ? { ...p, [k]: k === "id" ? v : Number(v) } : p)) });
   const save = async () => {
     setBusy(true);
-    try { onSaved(await api("put", "/admin/settings/store", { ...f, wm_price: Number(f.wm_price), wm_bundle_qty: Number(f.wm_bundle_qty), wm_bundle_price: Number(f.wm_bundle_price), storybook_price: Number(f.storybook_price || 29), ref_reward_cards: Number(f.ref_reward_cards), ref_max_rewards: Number(f.ref_max_rewards) })); toast.success("Store prices saved"); }
+    try { onSaved(await api("put", "/admin/settings/store", { ...f, wm_price: Number(f.wm_price), wm_bundle_qty: Number(f.wm_bundle_qty), wm_bundle_price: Number(f.wm_bundle_price), storybook_price: Number(f.storybook_price || 29), storybook_bundle_price: Number(f.storybook_bundle_price || 69), ref_reward_cards: Number(f.ref_reward_cards), ref_max_rewards: Number(f.ref_max_rewards) })); toast.success("Store prices saved"); }
     catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
   };
   return (
@@ -36,6 +36,7 @@ export function StoreSettings({ data, onSaved }) {
         <F label="Bundle size"><Input type="number" value={f.wm_bundle_qty} onChange={(e) => setF({ ...f, wm_bundle_qty: e.target.value })} data-testid="store-wm-qty" /></F>
         <F label="Bundle price ₹"><Input type="number" value={f.wm_bundle_price} onChange={(e) => setF({ ...f, wm_bundle_price: e.target.value })} data-testid="store-wm-bundle-price" /></F>
         <F label="Storybook add-on ₹ (30 days)"><Input type="number" value={f.storybook_price ?? 29} onChange={(e) => setF({ ...f, storybook_price: e.target.value })} data-testid="store-storybook-price" /></F>
+        <F label="Storybook 90-day bundle ₹"><Input type="number" value={f.storybook_bundle_price ?? 69} onChange={(e) => setF({ ...f, storybook_bundle_price: e.target.value })} data-testid="store-storybook-bundle-price" /></F>
         <F label="Referral reward (cards)"><Input type="number" value={f.ref_reward_cards} onChange={(e) => setF({ ...f, ref_reward_cards: e.target.value })} data-testid="store-ref-reward" /></F>
         <F label="Max rewards per user"><Input type="number" value={f.ref_max_rewards} onChange={(e) => setF({ ...f, ref_max_rewards: e.target.value })} data-testid="store-ref-max" /></F>
         <F label="Referrals on"><Switch checked={f.ref_enabled} onCheckedChange={(v) => setF({ ...f, ref_enabled: v })} data-testid="store-ref-enabled" /></F>

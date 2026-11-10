@@ -289,6 +289,27 @@ async def startup():
         init_storage()
     except Exception as e:
         logger.error("storage init failed: %s", e)
+    asyncio.create_task(storybook_reminder_loop())
+
+
+async def send_storybook_reminders():
+    t = now()
+    q = {"storybook_until": {"$gt": iso(t), "$lte": iso(t + timedelta(days=3))}, "email": {"$nin": [None, ""]},
+         "$expr": {"$ne": ["$storybook_reminded_for", "$storybook_until"]}}
+    async for u in db.users.find(q, {"_id": 0, "user_id": 1, "email": 1, "storybook_until": 1}):
+        r = await db.users.update_one({"user_id": u["user_id"], "storybook_reminded_for": {"$ne": u["storybook_until"]}},
+                                      {"$set": {"storybook_reminded_for": u["storybook_until"]}})
+        if r.modified_count:
+            notify(u["email"], ET.storybook_reminder(u["storybook_until"][:10]), "reminder")
+
+
+async def storybook_reminder_loop():
+    while True:
+        try:
+            await send_storybook_reminders()
+        except Exception as e:
+            logger.error("storybook reminders failed: %s", e)
+        await asyncio.sleep(3600)
 
 
 async def prepare_db():
@@ -521,6 +542,8 @@ async def price_item(body: CheckoutIn) -> dict:
         amount = plan["price_month"] if body.cycle == "month" else plan["price_year"]
         return {"amount": amount, "label": f"{plan['name']} plan ({'monthly' if body.cycle == 'month' else 'yearly'})", "plan": plan}
     if body.kind == "storybook":
+        if body.item_id == "90d":
+            return {"amount": st.get("storybook_bundle_price") or 69, "label": "Storybook add-on (90 days)", "qty": 90}
         return {"amount": st.get("storybook_price") or 29, "label": "Storybook add-on (30 days)", "qty": 30}
     if body.kind == "pack":
         pk = next((p for p in st["packs"] if p["id"] == body.item_id), None)
@@ -2243,12 +2266,13 @@ class StoreIn(BaseModel):
     ref_reward_cards: int = Field(ge=0, le=50)
     ref_max_rewards: int = Field(ge=0, le=10000)
     storybook_price: float = Field(default=29, ge=1, le=10000)
+    storybook_bundle_price: float = Field(default=69, ge=1, le=10000)
 
 
 @api.get("/store")
 async def store_public():
     st = settings_store.get("store")
-    return {k: st[k] for k in ("packs", "wm_price", "wm_bundle_qty", "wm_bundle_price", "ref_enabled", "ref_reward_cards", "storybook_price")}
+    return {k: st[k] for k in ("packs", "wm_price", "wm_bundle_qty", "wm_bundle_price", "ref_enabled", "ref_reward_cards", "storybook_price", "storybook_bundle_price")}
 
 
 @admin.put("/settings/store")
