@@ -1,0 +1,50 @@
+{
+  "summary": "Tested the revenue features (store, quotes/coupons, Razorpay checkout, admin coupons, referrals, export wallet with bonus cards and watermark passes, GST invoices, store/invoice settings) and ran the regression suites (blog, edit window, share, storybook, site gate, settings, DB). Backend: the new test_flexocards_revenue.py has 17 tests, 16 pass and 1 fails. The failure is a real bug: a coupon whose expiry has no timezone causes a 500. The capture flow was checked by calling activate_payment in-process, because no Razorpay webhook secret is set. That check confirmed invoice number FC-2026-00002, +3 bonus cards, coupon uses incremented, once-per-user reuse blocked, and the invoice JSON. Regression: 34/34 passed (features_v2, review, settings; Razorpay key and SMTP-switch tests deselected so the owner's keys stay untouched). Frontend: sign-in page shows 'Continue to FlexoCards'. Pricing shows the top-ups section, coupon box (invalid-code toast, valid code applied), GST fields and storybook highlight. Razorpay test checkout opens with the discounted amount (₹4 for ₹5 with 20% off). Paying in the Razorpay iframe could not be automated: the third-party iframe rejected the mobile number, so I stopped after 3 attempts. Dashboard shows the wallet, a referral card with copy link, My storybook and an Invoice button that downloads FC-2026-00002.pdf. Create page: the Free user with a pass sees the checkbox; downloading without a watermark used the pass, the link changed to 'Remove the watermark from ₹5' and the editor locked. The Pro user sees 'You can edit this card until …'. Admin Coupons create/toggle/delete works. Admin Settings shows all sections. Storybook: flip arrows work, the .html download (280KB) works, the story preview viewer opens and closes, video progress starts, and the PDF (3.8MB) downloads. At 390px, Home, Pricing, Blog, Dashboard and Storybook have no horizontal scroll, but the Create page does (scrollWidth 529). All QA data and settings were restored: site live, default DB, no social links, invoice/store defaults, test coupons, payments and storybook page removed, wallets and usage reset.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/billing/quote and POST /api/billing/checkout (apply_coupon, server.py ~line 530)", "issue": "500 TypeError 'can't compare offset-naive and offset-aware datetimes' when a coupon's expires_at has no timezone (e.g. '2020-01-01' or '2020-01-01T10:00'). Admin save accepts these via _dt(). The admin UI sends an ISO string ending in Z, so only the API path is affected today. Fix: in apply_coupon use _dt(c['expires_at']) and add tzinfo=utc when it is naive, or normalise to UTC-aware in admin_coupon_save.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/cards/export", "issue": "If a request_id is replayed (r.duplicate) with no_watermark=true and the user has >=1 pass, it returns watermark:false without spending a pass. That allows repeated watermark-free renders for one pass."},
+      {"endpoint": "apply_coupon max_uses", "issue": "'uses' only goes up on capture, so several pending checkouts can push a coupon past max_uses."},
+      {"endpoint": "build_invoice", "issue": "When inclusive=false, the invoice total is amount + GST, but the Razorpay order charged only amount_inr. The invoice total then differs from what was actually paid."},
+      {"endpoint": "POST /api/me/referral/claim", "issue": "Two new accounts can each claim the other's code (A→B and B→A) to farm bonus cards. Consider blocking reverse referrals."},
+      {"endpoint": "POST /api/billing/checkout", "issue": "One transient 502 from Cloudflare/Razorpay during order creation; it passed on retry (flaky, about 1 in 4 runs)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Create page at 390px", "issue": "Horizontal page scroll (documentElement.scrollWidth 529 vs 390). Cause: <fieldset data-testid='editor-fieldset'> defaults to min-inline-size:min-content, so the editor tabs list can't shrink and overflow-x-auto has no effect. Fix: add className 'min-w-0' (or style minInlineSize:0) to the fieldset.", "selector": "[data-testid='editor-fieldset']", "priority": "MEDIUM"},
+      {"component": "Dashboard billing history", "issue": "Card packs and watermark passes are labelled '(monthly)', e.g. '3 extra cards (monthly)'. Dashboard.jsx line 79 always prints the cycle; skip it when p.kind !== 'plan' or p.cycle is null. Amounts also show as ₹7.2 instead of ₹7.20.", "selector": "[data-testid^='my-payment-']", "priority": "LOW"},
+      {"component": "Editor credits pill", "issue": "Shows 'Free · 3 of 2 card credits left' when bonus cards are added to the remaining count. Show monthly and bonus separately, e.g. '1 of 2 + 2 bonus'.", "selector": "[data-testid='editor-credits']", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Razorpay payment completion", "issue": "Not verified end-to-end in the UI because the third-party iframe could not be automated. Checkout opens with the correct discounted amount. The capture → invoice → wallet path was verified on the backend only.", "affected_selectors": ["[data-testid='buy-watermark-single']"]}
+    ],
+    "design_issues": [
+      {"screen": "Dashboard billing history", "issues": ["Abandoned checkouts pile up as many 'PENDING' rows (the Free QA user has 10+). Hide 'created' orders older than about 30 minutes or show only paid/refunded ones."]},
+      {"screen": "Admin Coupons", "issues": ["Expiry uses the browser's native date input instead of the shadcn Calendar/Popover. The date is converted to midnight UTC, so a coupon expires at the start of the chosen day (05:30 IST), not the end of it."]},
+      {"screen": "Admin Settings → GST invoices", "issues": ["Seller State is free text, but the buyer picks State from a dropdown. A typo or abbreviation (e.g. 'KA') would flip CGST/SGST to IGST. Use the same state dropdown on both."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_flexocards_revenue.py", "/app/backend/tests/test_flexocards_features_v2.py", "/app/backend/tests/test_flexocards_review.py", "/app/backend/tests/test_flexocards_settings.py", "/app/test_reports/pytest/revenue.xml"],
+  "action_items": [
+    "Fix the 500 in apply_coupon for naive expires_at dates (timezone-aware comparison).",
+    "Add min-w-0 to the editor <fieldset> so the Create page has no horizontal scroll on mobile.",
+    "Stop labelling packs and passes as '(monthly)' in Dashboard billing history; format INR to 2 decimals.",
+    "Optional: make the watermark pass replay idempotent (on r.duplicate, return watermark:false only if a wm:{request_id} usage event exists); count pending orders toward max_uses or re-check at capture; fix the inclusive=false invoice total; block reverse referrals; hide stale pending orders."
+  ],
+  "critical_code_review_comments": [
+    "backend/server.py is 2435 lines. Split it into routers (billing, coupons/store/invoice, referrals, storybook, blog, settings/site gate).",
+    "apply_coupon parses expires_at with datetime.fromisoformat directly, while the rest of the code uses _dt(). Use _dt consistently and make the result tz-aware.",
+    "authorize_export: use_pass stays True on duplicate requests even if no pass was ever spent for that request_id.",
+    "activate_payment increments the invoice counter with _id 'invoice' but never resets it per year, although the number format contains the year. Confirm a continuous series is intended, or key the counter by year."
+  ],
+  "updated_files": ["/app/backend/tests/test_flexocards_revenue.py"],
+  "success_rate": {"backend": "98% (50/51 incl. regression; 1 real bug)", "frontend": "92% (all requested flows pass; Create page mobile overflow; Razorpay iframe payment not automatable)"},
+  "seed_data_creation": "None kept. Temporary TEST* coupons, a simulated captured pack payment for qa.team (invoice FC-2026-00002), a pro storybook page and pending orders were all deleted, and wallets/usage were restored. The invoice counter is now at 2.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Tokens: `cd /app/backend && python qa_users.py tokens > /tmp/tok.json` (the test fixtures read /tmp/tok.json). Clerk UI login: fill input[name=identifier] → .cl-formButtonPrimary → input[name=password] → .cl-formButtonPrimary, then fill input[data-input-otp='true'] with 424242 (new-device verification). No Razorpay webhook secret is configured, so the webhook capture test skips; capture can be simulated by importing server and calling activate_payment after settings_store.load_all(server.cfg_db). Do not run the Razorpay key or SMTP-switch tests in test_flexocards_settings.py (they touch the owner's config). QA free has 2 bonus cards and 1 watermark pass and has claimed basic's referral; QA pro has 3 storybook pages; there are no blog posts at the moment.",
+  "rca of the issue": "Coupon 500: admin_coupon_save validates expires_at with _dt() (fromisoformat, accepts naive values) and stores the raw string. apply_coupon compares now() (aware UTC) with datetime.fromisoformat(raw), which is naive for date-only input, so Python raises TypeError. Reproduce: POST /api/admin/coupons {code:'X1', type:'percent', value:10, expires_at:'2020-01-01'}, then POST /api/billing/quote {kind:'pack', item_id:'pack3', coupon:'X1'} → 500. Mobile overflow: fieldset elements have min-inline-size: min-content by default, so the inner overflow-x-auto tabs force the page wider."
+}
