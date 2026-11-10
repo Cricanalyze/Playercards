@@ -23,7 +23,7 @@ function Inner() {
   if (!me) return <PageSkeleton variant="dashboard" />;
   const { member, entitlements: ent, subscriptions, payments } = me;
   const del = async (id) => { try { await api("delete", `/me/cards/${id}`); toast.success("Card deleted"); load(); } catch (e) { toast.error(errMsg(e)); } };
-  const shownPayments = payments.filter((p) => p.status !== "created" || Date.now() - new Date(p.created_at) < 30 * 60000);
+  const shownPayments = payments.filter((p) => p.status !== "created");
   const invoice = async (p) => { try { downloadInvoicePdf(await api("get", `/me/payments/${p.id}/invoice`)); } catch (e) { toast.error(errMsg(e)); } };
   const unshare = async (id) => { try { await api("delete", `/me/cards/${id}/share`); toast.success("Public link turned off"); load(); } catch (e) { toast.error(errMsg(e)); } };
   const deleteMe = async () => { try { await api("delete", "/me"); toast.success("Your data was deleted."); refreshMe(); } catch (e) { toast.error(errMsg(e)); } };

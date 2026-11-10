@@ -1,0 +1,34 @@
+{
+  "summary": "Tested Razorpay TEST mode end to end and it works. Backend: 9/9 pytest checks passed (tests/test_razorpay_test_mode.py). /api/billing/config returns enabled=true, mode=test, key rzp_test_*. POST /api/billing/checkout creates real Razorpay orders: pro monthly 4500 paise, pack10 2500, storybook 30d 2900, storybook 90d 6900. Each order is saved as a 'created' payment. Checkout rejects unauthenticated calls (401/403) and an invalid item (400). Verify returns 400 for a bad signature and 404 for an unknown order. UI as qa.free: the Pricing page shows payments-test-mode-note, with no payments-pending-note and no 'pending setup' text. plan-cta-pro, buy-pack-pack10, buy-storybook-30d and buy-storybook-90d each open the Razorpay modal with Price Summary ₹45, ₹25, ₹29 and ₹69 (no GST added). A full test payment for Storybook 30d completed: card 4111 1111 1111 1111, 12/30, CVV 123, name, 'Maybe later', then 'Success' on the Razorpay mock bank popup. /billing/verify returned {status:'captured'}. The toast read 'Storybook add-on (30 days) added to your account!'. /storybook then shows no upsell, eyebrow 'ADD-ON · ACTIVE UNTIL DEC 10, 2026', and the empty flip-book. The dashboard Billing history shows '· ₹29 · PAID' with an Invoice button, which downloaded FC-2026-00003.pdf. The backend log shows the receipt email accepted (Emergent email 202). As qa.basic (no add-on), storybook-upgrade-button and storybook-bundle-button open the Razorpay modal with ₹29 and ₹69 and the basic email prefilled.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/billing/webhook", "issue": "The webhook secret is not set (config webhooks=false), so the webhook returns 503. If a user closes the tab after paying but before the browser calls /billing/verify, the payment is never activated and stays 'created' or 'authorized'. Razorpay also auto-refunds uncaptured payments. Set the webhook secret in admin settings and point Razorpay at /api/billing/webhook."},
+      {"endpoint": "rzp() helper in server.py", "issue": "rzp() uses synchronous requests.request inside async handlers (checkout, verify), which blocks the event loop for up to 15s per call. Use httpx.AsyncClient or run_in_threadpool."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard > Billing history", "issues": ["Every checkout that is opened and then closed leaves a 'PENDING' row for 30 minutes. One user can stack many identical pending lines, which looks like failed charges. Mark the payment 'abandoned' on modal dismiss, or hide 'created' rows / label them 'Not completed'."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_razorpay_test_mode.py", "/app/test_reports/pytest/pytest_razorpay.xml"],
+  "action_items": [
+    "Optional: set the Razorpay webhook secret so payments still activate when the browser closes before verify",
+    "Optional: make rzp() calls async (httpx.AsyncClient)",
+    "Optional: on Razorpay modal dismiss, mark the order abandoned or hide it from Billing history instead of showing PENDING"
+  ],
+  "critical_code_review_comments": [
+    "verify_payment checks the HMAC signature, the order id and the amount, and captures when the payment is 'authorized'. This is correct. activate_payment is idempotent (status-guarded find_one_and_update).",
+    "server.py is 2493 lines, well over the 700-line limit. Split the billing, admin and storybook code into routers.",
+    "rzp() does blocking I/O in async routes (see minor backend issue)."
+  ],
+  "updated_files": ["/app/backend/tests/test_razorpay_test_mode.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "One real TEST-mode captured payment for qa.free: Storybook 30d, invoice FC-2026-00003. qa.free now has storybook_until of about 2026-12-10. About 15 'created' (never paid) Razorpay test orders were created for qa.free and qa.basic. There is no delete endpoint for them, so they stay; they drop out of the dashboard list after 30 minutes. One receipt email was sent to qa.free+clerk_test@example.com.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "To automate Razorpay checkout in Playwright, work inside page.frame_locator('iframe.razorpay-checkout-frame'). Contact: input[name=contact] needs press_sequentially (fill() fails validation), and 9999999999 is rejected; use 9123456780. Then Continue, then [data-testid=card], then card.number/card.expiry/card.cvv/card.name, Continue, then button[name=pay_without_saving_card]. A popup opens at api.razorpay.com/.../mocksharp; click the 'Success' text. The amount in the iframe is at [data-testid=summary-amount-fallback]. qa.free now HAS storybook until about Dec 10 2026, so use qa.basic for upsell tests. Run pytest with REACT_APP_BACKEND_URL exported."
+}
