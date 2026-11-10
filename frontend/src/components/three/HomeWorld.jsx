@@ -3,7 +3,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { Float, Stars, Sparkles, PerformanceMonitor } from "@react-three/drei";
 import * as THREE from "three";
 import { Card3D, useCardImages } from "./Card3D";
-import { Ground, Stands, Floodlights, towerLevel } from "./StadiumScene";
+import { Ground, Stands, Floodlights, towerLevel, introTime, resetIntro } from "./StadiumScene";
 import { CricketBall, Football, Basketball, Shuttle, Pawn, Stumps, Trophy } from "./SportsObjects";
 
 const v = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -11,7 +11,7 @@ const v = (x, y, z) => new THREE.Vector3(x, y, z);
 const KEYS = [
   ["top", 0, v(-16, 30, 60), v(-6, 5, 0)],
   ["sports", 0, v(34, 7, 26), v(0, 9, -38)],
-  ["templates", 0, v(0, 3.4, 12), v(0, 2.2, 0)],
+  ["templates", 0, v(0, 3.2, 12), v(0, 0.4, 0)],
   ["how", 0, v(30, 18, 34), v(0, 0, 0)],
   ["how", 0.5, v(24, 4, 4), v(0, 1, 0)],
   ["how", 1, v(0, 2.2, -5.8), v(0, 1.95, 0)],
@@ -21,7 +21,7 @@ const KEYS = [
   ["cta-section", 0, v(4.5, 1.8, 14.5), v(0, 1, 9.5)],
 ];
 
-function Rig() {
+function Rig({ mobile }) {
   const tops = useRef([]);
   const pos = useMemo(() => new THREE.Vector3(), []);
   const look = useMemo(() => new THREE.Vector3(0, 5, 0), []);
@@ -49,6 +49,7 @@ function Rig() {
     const f = THREE.MathUtils.smoothstep(y, ts[i], ts[i + 1] || ts[i] + 1);
     pos.lerpVectors(KEYS[i][2], KEYS[i + 1][2], f);
     tgt.lerpVectors(KEYS[i][3], KEYS[i + 1][3], f);
+    if (mobile) pos.sub(tgt).multiplyScalar(1.3).add(tgt);
     camera.position.lerp(pos, 0.07);
     look.lerp(tgt, 0.07);
     camera.lookAt(look);
@@ -139,7 +140,7 @@ function IntroLights() {
   const b = useRef();
   const h = useRef();
   useFrame(({ clock }) => {
-    const t = clock.elapsedTime;
+    const t = introTime(clock);
     const k = Math.min(1, Math.max(0, (t - 0.6) / 2.6));
     if (a.current) a.current.intensity = 2500 * towerLevel(t, 0) * k;
     if (b.current) b.current.intensity = 1800 * towerLevel(t, 2) * k;
@@ -172,6 +173,7 @@ export default function HomeWorld({ mobile, mine }) {
   const mineDemo = useMemo(() => (mine ? { sport: mine.sport, data: mine.data } : null), [mine]);
   const demoCards = cards.filter((c) => !String(c.i).startsWith("mine-"));
   const [dpr, setDpr] = useState(mobile ? 1 : 1.3);
+  useEffect(() => { resetIntro(); }, []);
   return (
     <>
       {node}
@@ -206,7 +208,7 @@ export default function HomeWorld({ mobile, mine }) {
           </group>
           <group position={[0, 0.55, 10]}><Stumps /></group>
           <BouncingBall />
-          <Rig />
+          <Rig mobile={mobile} />
         </Canvas>
       </div>
     </>

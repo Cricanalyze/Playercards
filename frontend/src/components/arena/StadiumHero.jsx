@@ -21,7 +21,7 @@ export function StadiumHero({ mine }) {
           </div>
           <p className="mt-6 text-xs text-slate-300">Free account · 2 card downloads a month · Photos stay on your device</p>
           {mine && (
-            <button type="button" onClick={() => document.getElementById("templates")?.scrollIntoView({ behavior: "smooth" })} data-testid="hero-your-card-note"
+            <button type="button" onClick={() => { const el = document.getElementById("templates"); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.35, behavior: "smooth" }); }} data-testid="hero-your-card-note"
               className="mt-5 inline-flex items-center gap-2 sticker sticker-cyan text-sm">
               Your card “{mine.data?.name || mine.sport?.name}” is standing on the pitch ↓
             </button>

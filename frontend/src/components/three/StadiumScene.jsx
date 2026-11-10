@@ -72,6 +72,14 @@ export function Stands({ crowd }) {
 }
 
 // Match-night switch-on: each tower flickers then locks on, one after another.
+// The clock starts a few frames in, so slow first renders (shader compile) don't skip the show.
+const introClock = { frames: 0, t0: 0 };
+export const introTime = (clock) => {
+  if (introClock.frames < 3) { introClock.frames += 1; introClock.t0 = clock.elapsedTime; return 0; }
+  return clock.elapsedTime - introClock.t0;
+};
+export const resetIntro = () => { introClock.frames = 0; };
+
 export const towerLevel = (t, i) => {
   const on = 0.6 + i * 0.7;
   if (t < on) return 0.02;
@@ -83,7 +91,7 @@ function Tower({ i, a, cones, intro }) {
   const head = useRef();
   const cone = useRef();
   useFrame(({ clock }) => {
-    const k = intro ? towerLevel(clock.elapsedTime, i) : 1;
+    const k = intro ? towerLevel(clock.elapsedTime - introClock.t0, i) : 1;
     if (head.current) head.current.emissiveIntensity = 3 * k;
     if (cone.current) cone.current.opacity = 0.05 * k;
   });
