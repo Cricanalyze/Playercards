@@ -544,6 +544,8 @@ async def price_item(body: CheckoutIn) -> dict:
     if body.kind == "storybook":
         if body.item_id == "90d":
             return {"amount": st.get("storybook_bundle_price") or 69, "label": "Storybook add-on (90 days)", "qty": 90}
+        if body.item_id != "30d":
+            raise HTTPException(400, "Choose an available storybook option.")
         return {"amount": st.get("storybook_price") or 29, "label": "Storybook add-on (30 days)", "qty": 30}
     if body.kind == "pack":
         pk = next((p for p in st["packs"] if p["id"] == body.item_id), None)

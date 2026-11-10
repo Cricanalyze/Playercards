@@ -11,9 +11,9 @@ export const PaidHighlights = () => (
   <section className="mt-16 rounded-3xl border border-amber-500/40 bg-[#0b1a3a] text-white p-6 sm:p-10 relative overflow-hidden" data-testid="pricing-storybook-highlight">
     <div className="absolute inset-0 stage-grid opacity-25 pointer-events-none" />
     <div className="relative">
-      <span className="inline-flex px-3 h-7 items-center rounded-full bg-amber-500 text-slate-950 text-[11px] font-black uppercase tracking-widest">Add-on · ₹29 for 30 days</span>
+      <span className="inline-flex px-3 h-7 items-center rounded-full bg-amber-500 text-slate-950 text-[11px] font-black uppercase tracking-widest">Add-on · ₹29 / 30 days · ₹69 / 90 days</span>
       <h2 className="font-display font-black uppercase text-3xl sm:text-5xl mt-4 leading-none">Your cards, as a storybook</h2>
-      <p className="text-slate-300 mt-3 max-w-2xl text-sm sm:text-base">Add Storybook to any plan, Free included, for ₹29. For 30 days every card you download goes into a private storybook you can view and download three ways.</p>
+      <p className="text-slate-300 mt-3 max-w-2xl text-sm sm:text-base">Add Storybook to any plan, Free included: ₹29 for 30 days or ₹69 for 90 days. While it is active, every card you download goes into a private storybook you can view and download three ways.</p>
       <div className="grid md:grid-cols-3 gap-4 mt-8">
         {ITEMS.map(([Icon, t, d]) => (
           <div key={t} className="rounded-2xl border border-white/10 bg-white/5 p-5" data-testid={`pricing-storybook-${t.split(" ")[0].toLowerCase()}`}>

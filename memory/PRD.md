@@ -41,3 +41,5 @@ Follow-up requests: rebrand to **FlexoCards** (Buddy Innovations and Technologie
 - Storybook removed from Pro/Team plans → paid add-on ₹29 for 30 days (kind=storybook checkout, users.storybook_until, stacks on renewal; price editable in Admin › Store). Entitlements expose storybook/storybook_until.
 - "Secured by Clerk" footer hidden via CSS (.cl-footer).
 - Test: iteration_2 frontend 100%.
+- Jun 2026 (iter 3): Storybook 90-day bundle ₹69 (item 90d) + 30d ₹29; both editable in Admin › Store. Hourly reminder email 3 days before storybook_until (once per period, users.storybook_reminded_for). Phone tilt via deviceorientation on touch devices (iOS permission asked on first tap). All "Secured by Clerk" footers hidden (sign-in, UserButton popover, Manage account). QA users seeded via backend/qa_users.py. Test iteration_3: 100%.
+- Pending: Razorpay keys (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET) for real payments; email key for reminders to deliver.

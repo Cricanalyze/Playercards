@@ -1,0 +1,34 @@
+{
+  "summary": "Tested the Clerk 'Secured by Clerk' bug, the Storybook 30d/90d add-on (backend and UI), admin store prices, phone tilt and regression. The bug was still there: the Manage account modal (UserProfile navbar) showed 'Secured by Clerk' and 'Development mode', because that footer uses the class .cl-footerItem, which the existing .cl-footer rules don't match. Fixed it with a one-line CSS rule in index.css and re-checked: the text no longer appears on the sign-in page (email and password steps), the UserButton popover, or Manage account (Profile and Security tabs) at desktop or mobile sizes. Every other requested feature passed.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "/api/store", "issue": "After an admin save, prices come back as floats (29.0 / 69.0) because StoreIn uses float. They show fine as ₹29/₹69, but the type differs from the seeded int values."},
+    {"endpoint": "/api/billing/quote", "issue": "kind=storybook with an unknown item_id (e.g. 'abc') quietly falls back to the 30d price instead of returning 400. Low risk."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Clerk UserProfile modal (Manage account)", "issue": "'Secured by Clerk' and 'Development mode' showed at the bottom of the navbar (.cl-footerItem). FIXED by the testing agent in index.css.", "selector": ".cl-navbar .cl-footerItem", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Pricing - Storybook feature section", "issues": ["The badge says 'ADD-ON · ₹29 FOR 30 DAYS' and the copy only mentions ₹29/30 days. Consider mentioning the ₹69 / 90-day option."]},
+      {"screen": "Manage account modal (desktop)", "issues": ["The faint orange dev-mode stripe pattern from Clerk is still visible at the bottom of the navbar. This is dev-instance only and goes away with production keys."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_storybook_addon.py", "/app/test_reports/pytest/pytest_storybook.xml"],
+  "action_items": [
+    "Keep the testing agent's CSS rule at the bottom of index.css (.cl-footerItem, .cl-navbar [class*=\"cl-footer\"] ...) or merge it into your Clerk overrides.",
+    "Optional: return 400 for an invalid storybook item_id in /billing/quote.",
+    "Optional: mention the 90-day bundle in the pricing Storybook section copy."
+  ],
+  "critical_code_review_comments": [
+    "Hiding the Clerk branding with CSS is fragile because Clerk class names change between versions. The appearance prop (layout: { unsafe_disableDevelopmentModeWarnings: true }) and branding settings in the Clerk dashboard are more robust ways to remove the dev-mode text. 'Secured by Clerk' can only be removed officially on a paid plan.",
+    "useDeviceTilt sets the beta baseline from the first event and never resets it. If the user changes how they hold the phone a lot, the card stays clamped at one edge. Consider re-basing after orientationchange.",
+    "Sign-in card renders no .cl-footerActionLink ('Sign up' link). Confirm this is intentional."
+  ],
+  "updated_files": ["/app/frontend/src/index.css", "/app/backend/tests/test_storybook_addon.py"],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% after the CSS fix (Clerk bug failed before it)"},
+  "seed_data_creation": "None. Admin store storybook_bundle_price was temporarily set to 70 via the UI and restored to 69.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Clerk check: sign in, open .cl-userButtonTrigger, then Manage account, and check that document.body.innerText contains neither 'Secured by' nor 'Development mode'. Tilt check: use a new_context with has_touch/is_mobile, dispatch Event('deviceorientation') with beta/gamma, and read [data-testid=hero-card-main] style.transform. The flip element is the hero-card-main > div.relative. Use curl rather than urllib for public API checks (urllib gets a 403)."
+}

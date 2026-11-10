@@ -16,7 +16,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 EMAIL_BASE_URL = "https://integrations.emergentagent.com"
-EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
+EMAIL_KEY = os.environ["EMERGENT_EMAIL_KEY"]
 
 
 class EmailError(Exception):
