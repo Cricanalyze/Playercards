@@ -213,8 +213,10 @@ async def get_entitlements(member: Optional[dict]) -> dict:
                 plan, sub = p, s
     period, reset_at = period_of()
     used = (await db.usage.find_one({"user_id": member["user_id"], "period": period}, NOFIELDS) or {}) if member else {}
-    wallet = (await db.users.find_one({"user_id": member["user_id"]}, {"_id": 0, "bonus_cards": 1, "watermark_passes": 1}) or {}) if member else {}
+    wallet = (await db.users.find_one({"user_id": member["user_id"]}, {"_id": 0, "bonus_cards": 1, "watermark_passes": 1, "storybook_until": 1}) or {}) if member else {}
     e = plan["entitlements"]
+    sb_until = wallet.get("storybook_until") or ""
+    sb_active = bool(sb_until) and _aware(sb_until) > now()
     cards_used, bg_used = used.get("cards", 0), used.get("bg_removals", 0)
     return {
         "plan_id": plan["id"], "plan_name": plan["name"], "plan_ids": [plan["id"]],
@@ -229,6 +231,7 @@ async def get_entitlements(member: Optional[dict]) -> dict:
         "period": period, "reset_at": iso(reset_at), "features": e,
         "remove_watermark": bool(e.get("remove_watermark")), "saved_cards": e.get("saved_cards", 5),
         "premium_templates": [],
+        "storybook_until": sb_until if sb_active else None, "storybook": sb_active,
     }
 
 
@@ -292,6 +295,7 @@ async def prepare_db():
     for old, new in RETIRED_ROLES.items():
         await db.users.update_many({"role": old}, {"$set": {"role": new}})
     await migrate_catalog()
+    await db.plans.update_many({}, {"$pull": {"features": "Storybook: flip-book, story video & PDF"}})
     for coll, items in (("sports", SPORTS), ("templates", TEMPLATES), ("plans", PLANS), ("backgrounds", BACKGROUNDS)):
         for it in items:
             await db[coll].update_one({"id": it["id"]}, {"$setOnInsert": it}, upsert=True)
@@ -500,7 +504,7 @@ class BillingInfo(BaseModel):
 
 
 class CheckoutIn(BaseModel):
-    kind: str = Field(default="plan", pattern="^(plan|pack|watermark)$")
+    kind: str = Field(default="plan", pattern="^(plan|pack|watermark|storybook)$")
     plan_id: str = Field(default="", max_length=60)
     cycle: str = Field(default="month", pattern="^(month|year)$")
     item_id: str = Field(default="", max_length=40)
@@ -516,6 +520,8 @@ async def price_item(body: CheckoutIn) -> dict:
             raise HTTPException(400, "Choose an available paid plan.")
         amount = plan["price_month"] if body.cycle == "month" else plan["price_year"]
         return {"amount": amount, "label": f"{plan['name']} plan ({'monthly' if body.cycle == 'month' else 'yearly'})", "plan": plan}
+    if body.kind == "storybook":
+        return {"amount": st.get("storybook_price") or 29, "label": "Storybook add-on (30 days)", "qty": 30}
     if body.kind == "pack":
         pk = next((p for p in st["packs"] if p["id"] == body.item_id), None)
         if not pk:
@@ -606,6 +612,14 @@ async def activate_payment(pay: dict, rzp_payment_id: str, via: str):
     await db.payments.update_one({"id": pay["id"]}, {"$set": {"invoice_no": f"{inv['prefix']}-{now().year}-{seq['n']:05d}"}})
     if pay.get("coupon"):
         await db.coupons.update_one({"code": pay["coupon"]}, {"$inc": {"uses": 1}})
+    if pay.get("kind") == "storybook":
+        u = await db.users.find_one({"user_id": pay["user_id"]}, {"_id": 0, "storybook_until": 1}) or {}
+        start = max(now(), _aware(u.get("storybook_until", "")) or now())
+        until = iso(start + timedelta(days=int(pay.get("qty") or 30)))
+        await db.users.update_one({"user_id": pay["user_id"]}, {"$set": {"storybook_until": until}})
+        if pay.get("user_email"):
+            notify(pay["user_email"], ET.purchase(pay["item_label"], pay["amount_inr"], [("Storybook active until", until[:10])], rzp_payment_id), "receipt")
+        return
     if pay.get("kind") in ("pack", "watermark"):
         field = "bonus_cards" if pay["kind"] == "pack" else "watermark_passes"
         await db.users.update_one({"user_id": pay["user_id"]}, {"$inc": {field: int(pay["qty"])}})
@@ -2109,8 +2123,7 @@ async def admin_db_backup(member: dict = Depends(require_perm("settings.manage")
     return StreamingResponse(gen(), media_type="application/json", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
-# ---------- storybook (Pro & Team) ----------
-STORYBOOK_PLANS = ("pro", "team")
+# ---------- storybook (paid add-on) ----------
 
 
 class PageIn(BaseModel):
@@ -2124,8 +2137,8 @@ class PageIn(BaseModel):
 @api.post("/me/storybook")
 async def add_story_page(body: PageIn, request: Request, member: dict = Depends(current_member)):
     rate_limit(request, "storybook", 30)
-    if (await get_entitlements(member))["plan_id"] not in STORYBOOK_PLANS:
-        upgrade_error("The storybook is part of the Pro and Team plans.", "storybook")
+    if not (await get_entitlements(member))["storybook"]:
+        upgrade_error("Storybook is a paid add-on. Unlock it for 30 days to save cards here.", "storybook")
     if await db.storybook_pages.count_documents({"user_id": member["user_id"]}) >= 300:
         raise HTTPException(400, "Your storybook is full (300 pages). Remove some pages first.")
     import base64
@@ -2154,7 +2167,7 @@ async def add_story_page(body: PageIn, request: Request, member: dict = Depends(
 async def list_story_pages(member: dict = Depends(current_member)):
     ent = await get_entitlements(member)
     pages = await db.storybook_pages.find({"user_id": member["user_id"]}, {"_id": 0, "image_path": 0}).sort("created_at", 1).to_list(300)
-    return {"enabled": ent["plan_id"] in STORYBOOK_PLANS, "pages": pages}
+    return {"enabled": ent["storybook"], "until": ent["storybook_until"], "pages": pages}
 
 
 @api.get("/me/storybook/{page_id}/image")
@@ -2229,12 +2242,13 @@ class StoreIn(BaseModel):
     ref_enabled: bool = True
     ref_reward_cards: int = Field(ge=0, le=50)
     ref_max_rewards: int = Field(ge=0, le=10000)
+    storybook_price: float = Field(default=29, ge=1, le=10000)
 
 
 @api.get("/store")
 async def store_public():
     st = settings_store.get("store")
-    return {k: st[k] for k in ("packs", "wm_price", "wm_bundle_qty", "wm_bundle_price", "ref_enabled", "ref_reward_cards")}
+    return {k: st[k] for k in ("packs", "wm_price", "wm_bundle_qty", "wm_bundle_price", "ref_enabled", "ref_reward_cards", "storybook_price")}
 
 
 @admin.put("/settings/store")

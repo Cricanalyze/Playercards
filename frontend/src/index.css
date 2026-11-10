@@ -168,3 +168,5 @@
 .polaroid-grid > :nth-child(3n) { transform: rotate(-.4deg); }
 .face { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
 @media (prefers-reduced-motion: reduce) { .floodlight, .marquee { animation: none; } }
+.cl-footer > :not(.cl-footerAction) { display: none !important; }
+.cl-footer:not(:has(.cl-footerAction)) { display: none !important; }

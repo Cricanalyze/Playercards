@@ -4,7 +4,9 @@ import { toast } from "sonner";
 import { BookOpen, FileDown, Trash2, Lock, Loader2, Plus, Film, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAppData } from "@/context/AppData";
-import { useApi, errMsg, fmtDate } from "@/lib/api";
+import axios from "axios";
+import { API, useApi, errMsg, fmtDate, inr } from "@/lib/api";
+import { useCheckout } from "@/lib/checkout";
 import { useStoryImages } from "@/components/storybook/useStoryImages";
 import { FlipBook } from "@/components/storybook/FlipBook";
 import { StoryViewer } from "@/components/storybook/StoryViewer";
@@ -15,14 +17,21 @@ import { PageSkeleton } from "@/components/Skeletons";
 
 const TABS = [["flip", "Flip-book", BookOpen], ["story", "Story video", Film], ["pdf", "PDF booklet", FileDown]];
 
-const Upsell = () => (
-  <div className="rounded-3xl border border-amber-500/40 bg-amber-500/5 p-8 sm:p-12 text-center max-w-2xl mx-auto" data-testid="storybook-upsell">
-    <Lock className="w-8 h-8 text-amber-500 mx-auto" />
-    <h2 className="font-display font-black uppercase text-3xl sm:text-4xl mt-4">Storybook is a Pro feature</h2>
-    <p className="text-muted-foreground mt-3 text-sm sm:text-base">On Pro and Team plans every card you download is saved to your storybook. Flip through it like an album, play it as a story slideshow, or download it as a printable PDF.</p>
-    <Button asChild className="rounded-full font-bold mt-6" data-testid="storybook-upgrade-button"><Link to="/pricing">See Pro plan</Link></Button>
-  </div>
-);
+const Upsell = ({ onDone }) => {
+  const { buy, busy } = useCheckout();
+  const [price, setPrice] = useState(29);
+  useEffect(() => { axios.get(`${API}/store`).then((r) => setPrice(r.data.storybook_price || 29)).catch(() => {}); }, []);
+  return (
+    <div className="rounded-3xl border border-amber-500/40 bg-amber-500/5 p-8 sm:p-12 text-center max-w-2xl mx-auto" data-testid="storybook-upsell">
+      <Lock className="w-8 h-8 text-amber-500 mx-auto" />
+      <h2 className="font-display font-black uppercase text-3xl sm:text-4xl mt-4">Unlock your storybook</h2>
+      <p className="text-muted-foreground mt-3 text-sm sm:text-base">Storybook is an add-on on any plan, Free included. For 30 days every card you download is saved here. Flip through it like an album, play it as a story video, or download it as a printable PDF.</p>
+      <Button onClick={async () => { await buy("storybook", "30d"); onDone(); }} disabled={!!busy} className="rounded-full font-bold mt-6" data-testid="storybook-upgrade-button">
+        {busy && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Unlock for {inr(price)} · 30 days</Button>
+      <p className="text-xs text-muted-foreground mt-3">One-time payment, no auto-renewal. Pages you've already saved stay after it ends.</p>
+    </div>
+  );
+};
 
 export default function Storybook() {
   const api = useApi();
@@ -79,13 +88,14 @@ export default function Storybook() {
   return (
     <div className="container-x py-10 sm:py-14" data-testid="storybook-page">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div><p className="eyebrow">Pro · Team</p><h1 className="font-display font-black uppercase text-4xl sm:text-5xl lg:text-6xl tracking-tight">My storybook</h1>
+        <div><p className="eyebrow">Add-on{data.enabled && data.until ? ` · active until ${fmtDate(data.until)}` : ""}</p><h1 className="font-display font-black uppercase text-4xl sm:text-5xl lg:text-6xl tracking-tight">My storybook</h1>
           <p className="text-sm text-muted-foreground mt-2">Every card you download is added automatically. {pages.length > 0 && `${pages.length} card${pages.length === 1 ? "" : "s"} so far.`}</p></div>
         <Button asChild className="rounded-full font-bold" data-testid="storybook-new-card"><Link to="/create"><Plus className="w-4 h-4 mr-1" />New card</Link></Button>
       </div>
-      {!data.enabled && pages.length === 0 ? <div className="mt-10"><Upsell /></div> : (
+      {!data.enabled && pages.length === 0 ? <div className="mt-10"><Upsell onDone={load} /></div> : (
         <>
-          {!data.enabled && <p className="mt-6 rounded-xl border border-amber-500/40 p-3 text-sm" data-testid="storybook-readonly-note">Your plan no longer includes the storybook, so new cards won't be added. <Link to="/pricing" className="text-amber-500 underline">Upgrade to Pro</Link> to keep adding.</p>}
+          {!data.enabled && <p className="mt-6 rounded-xl border border-amber-500/40 p-3 text-sm" data-testid="storybook-readonly-note">Your storybook add-on has ended, so new cards won't be added. Unlock it again to keep adding.</p>}
+          {!data.enabled && <div className="mt-4"><Upsell onDone={load} /></div>}
           <div className="mt-8 inline-flex p-1 rounded-full border border-border bg-muted/40 max-w-full overflow-x-auto" data-testid="storybook-tabs">
             {TABS.map(([id, label, Icon]) => (
               <button key={id} onClick={() => setTab(id)} data-testid={`storybook-tab-${id}`}

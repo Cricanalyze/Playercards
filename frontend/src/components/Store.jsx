@@ -3,7 +3,7 @@ import axios from "axios";
 import { Link } from "react-router-dom";
 import { Show } from "@clerk/react";
 import { toast } from "sonner";
-import { Zap, Droplets, Ticket, Receipt, Loader2, Check } from "lucide-react";
+import { Zap, Droplets, Ticket, Receipt, Loader2, Check, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API, useApi, errMsg, inr } from "@/lib/api";
@@ -74,7 +74,7 @@ export function TopUps() {
       <p className="eyebrow">No subscription needed</p>
       <h2 className="font-display font-black uppercase text-3xl sm:text-4xl mt-1">Top-ups & extras</h2>
       <p className="text-sm text-muted-foreground mt-2 max-w-xl">Out of cards this month? Grab a pack. Pack cards never expire and are used after your monthly credits.</p>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-6">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mt-6">
         {st.packs.map((p, i) => (
           <div key={p.id} className={`rounded-2xl border p-5 flex flex-col ${i === 1 ? "border-amber-500" : "border-border"}`} data-testid={`pack-${p.id}`}>
             <Zap className="w-5 h-5 text-amber-500" />
@@ -84,6 +84,13 @@ export function TopUps() {
             <div className="mt-auto"><Btn kind="pack" id={p.id}>Buy pack</Btn></div>
           </div>
         ))}
+        <div className="rounded-2xl border border-amber-500 p-5 flex flex-col" data-testid="storybook-addon">
+          <BookOpen className="w-5 h-5 text-amber-500" />
+          <p className="font-display font-black uppercase text-2xl mt-2">Storybook</p>
+          <p className="text-3xl font-display font-black mt-1">{inr(st.storybook_price || 29)}</p>
+          <p className="text-xs text-muted-foreground">30 days · flip-book, story video & PDF of every card you download</p>
+          <div className="mt-auto"><Btn kind="storybook" id="30d">Unlock 30 days</Btn></div>
+        </div>
         <div className="rounded-2xl border border-border p-5 flex flex-col" data-testid="watermark-single">
           <Droplets className="w-5 h-5 text-amber-500" />
           <p className="font-display font-black uppercase text-2xl mt-2">No watermark</p>

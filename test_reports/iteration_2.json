@@ -1,0 +1,41 @@
+{
+  "summary": "Frontend-only test of the 3D/stadium/trading-card redesign of the public pages (Home, Explore, Pricing, Blog, Help, Header, Footer) on desktop at 1920px and mobile at 390px. Signed-in flows were not tested because no test account exists. Every requested feature works and there were no page errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home how-stage (scroll-driven steps)", "issues": ["Between steps no panel is fully visible (for example at about 20% of the section's scroll, step 1 is at opacity 0 and step 2 is only at 0.45). This reads as short dead zones. The panels also sit at mid-screen, leaving a large empty dark area below them on desktop. Consider widening the opacity plateau for each step."]},
+      {"screen": "StadiumHero / StadiumSteps", "issues": ["The small-screen check (window.innerWidth < 640) runs during render and does not update on resize or rotation, so card sizes and x-offsets stay stale until reload. Minor."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional polish: smooth out the opacity gaps between how-step panels",
+    "Optional: make the small-screen check in StadiumHero/StadiumSteps react to resize (matchMedia listener)"
+  ],
+  "critical_code_review_comments": [
+    "TiltCard calls useMotionTemplate inline in JSX for the holo layer. It runs unconditionally so it works, but it should move to the top level of the component for readability and hook safety.",
+    "Explore filter buttons and the Home sport-category chips are fine. At 390px the category chip row scrolls sideways inside its own container and the page itself does not overflow."
+  ],
+  "verified": [
+    "stadium-hero renders 3 demo cards; hero-card-main tilts on pointer move (rotateX/rotateY applied), flips to the back on click (rotateY 180, shows FlexoCards · Certified, 6 stat rows, rating) and flips back on a second click; flip also works on mobile",
+    "hero-create-card-button links to /create (redirects to sign-up with redirect_url when signed out); hero-explore-designs-button goes to /explore",
+    "sports-ticker shows sport names; sport-search-input filters (60 sports, 'kabaddi' gives 1, no match gives 0); sport-category-esports gives 9",
+    "featured-templates shows 25 cards; clicking featured-template-classic_athlete goes to /create?template=classic_athlete (through sign-up redirect)",
+    "how-stage stays pinned (sticky top 0) through the whole scroll; steps 1 to 4 appear in order at desktop and mobile",
+    "benefit-1..6, faq-item-*, contact form submit shows a success toast, cta-create-card-button points to /create",
+    "Billing toggle changes plan prices: monthly ₹0/18/45/79, yearly ₹0/180/450/790; pending-payments note shown (expected)",
+    "Explore filters: all 25, free 6, basic 5, pro 5, premium 5, exclusive 4; explore-card flips; explore-use links to /create?template=",
+    "Pricing, Blog (search with no results shows blog-empty) and Help (6 guides, FAQ, contact) each render a page-hero with no layout breakage",
+    "Active nav item has the nav-active underline; theme toggle switches light/dark and both are readable",
+    "390px: no horizontal page overflow (scrollWidth 390) on Home, Explore, Pricing, Help and Blog; mobile menu opens and navigates",
+    "/sign-in shows the Clerk form; /create redirects to sign-up when signed out"
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100%"},
+  "seed_data_creation": "One contact message submitted through the Home contact form (email TEST_redesign@example.com) during the test",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Redesign of the public pages has been verified. Signed-in flows (dashboard, editor) were not tested because there is no Clerk test account. Payments pending setup and email not configured are expected."
+}

@@ -10,7 +10,7 @@ const TERMS = [
   ["Monthly vs yearly", "Monthly gives 1 month of access; yearly gives 12 months for the price of 10. Plans don't auto-renew — renew or switch any time."],
   ["Card credits", "Each PNG download or share uses 1 credit. Credits reset on the 1st of every month, including on yearly plans. Unused credits don't roll over."],
   ["Changing plans", "Buying a different plan replaces your current paid plan straight away. Renewing the same plan adds time to your expiry date."],
-  ["Expiry", "When a plan expires you drop back to Free. Your saved cards and storybook pages are kept, but new cards stop being added to the storybook and public links turn off."],
+  ["Expiry", "When a plan expires you drop back to Free. Your saved cards are kept and public links turn off. The Storybook add-on runs on its own 30-day timer."],
   ["Refunds", "Refunds follow applicable law and Razorpay rules. A refunded payment ends the plan it paid for."],
   ["Price changes", "New prices apply to future purchases only."],
 ];

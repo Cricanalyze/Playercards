@@ -34,3 +34,10 @@ Follow-up requests: rebrand to **FlexoCards** (Buddy Innovations and Technologie
 - P1: Storybook video music and premium transitions (9)
 - P1: Admin payments list invoice button; live Clerk/Razorpay keys before launch
 - P2: Gift a plan, paid template drops, printed cards, AI add-ons
+
+## Session (Jun 2026) — main3 import + redesign
+- Imported branch main3; runs with user's own Clerk dev keys (ADMIN_EMAIL set). EMERGENT_EMAIL_KEY optional (mailer won't send until set). Razorpay keys not set → payments "pending setup".
+- Public pages redesigned (3D tilt/flip cards, scroll-driven stadium "how it works", trading-card collector look): components/arena/*, Home, Explore, Pricing, Blog, Help, Header, Footer. Fonts: Big Shoulders Display + Permanent Marker.
+- Storybook removed from Pro/Team plans → paid add-on ₹29 for 30 days (kind=storybook checkout, users.storybook_until, stacks on renewal; price editable in Admin › Store). Entitlements expose storybook/storybook_until.
+- "Secured by Clerk" footer hidden via CSS (.cl-footer).
+- Test: iteration_2 frontend 100%.
