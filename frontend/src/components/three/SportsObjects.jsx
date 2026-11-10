@@ -50,6 +50,22 @@ export const Shuttle = () => (
   </group>
 );
 
+export function Trophy() {
+  const cup = useMemo(() => new THREE.LatheGeometry(
+    [[0, 0], [0.55, 0.02], [0.62, 0.35], [0.6, 0.75], [0.45, 1.05], [0.14, 1.25], [0.1, 1.6], [0.32, 1.72], [0.36, 1.82], [0, 1.82]].map(([x, y]) => new THREE.Vector2(x, y)), 48), []);
+  const g = useRef();
+  useFrame((_, dt) => { if (g.current) g.current.rotation.y += dt * 0.5; });
+  const gold = <meshStandardMaterial color="#E6B325" metalness={1} roughness={0.18} />;
+  return (
+    <group ref={g}>
+      <mesh geometry={cup} rotation={[Math.PI, 0, 0]} position={[0, 2.6, 0]}>{gold}</mesh>
+      {[-1, 1].map((s) => <mesh key={s} position={[s * 0.62, 2.05, 0]} rotation={[0, 0, s * 0.2]}><torusGeometry args={[0.26, 0.05, 12, 32, Math.PI * 1.3]} />{gold}</mesh>)}
+      <mesh position={[0, 0.25, 0]}><boxGeometry args={[1.1, 0.5, 1.1]} /><meshStandardMaterial color="#141A26" metalness={0.5} roughness={0.4} /></mesh>
+      <mesh position={[0, 0.53, 0]}><boxGeometry args={[0.8, 0.08, 0.8]} />{gold}</mesh>
+    </group>
+  );
+}
+
 const ITEMS = [
   [CricketBall, [-2.7, 1.7, -0.4]], [Football, [2.8, 1.4, -0.8]], [Basketball, [2.5, -1.8, 0.2]],
   [Stumps, [-2.6, -1.6, -0.6]], [Pawn, [-3.6, 0.1, -2]], [Shuttle, [3.7, 0, -2]],

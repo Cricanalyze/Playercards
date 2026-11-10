@@ -1,9 +1,6 @@
-import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { Trophy, Upload, Palette, Download } from "lucide-react";
-import { hasWebGL } from "@/components/three/webgl";
-
-const StadiumScene = lazy(() => import("@/components/three/StadiumScene"));
 
 const STEPS = [
   [Trophy, "Pick your sport", "60+ sports & games, each with its own stats."],
@@ -22,7 +19,7 @@ function Panel({ p, i }) {
   return (
     <motion.div style={{ opacity, y }} className="absolute inset-x-0 bottom-8 sm:bottom-14 pointer-events-none">
       <div className="container-x">
-        <div className="w-[min(500px,100%)] rounded-2xl border-2 border-amber-400/70 bg-[#0D121B]/85 backdrop-blur-md p-6 sm:p-8 relative" data-testid={`how-step-${i + 1}`}>
+        <div className="w-[min(500px,100%)] rounded-2xl border-2 border-amber-400/70 bg-[#0D121B]/85 p-6 sm:p-8 relative" data-testid={`how-step-${i + 1}`}>
           <span className="absolute -top-4 right-6 sticker text-sm">No. 0{i + 1} / 0{N}</span>
           <div className="flex items-start gap-5">
             <span className="font-poster font-black text-[84px] leading-[0.75] text-amber-400">{i + 1}</span>
@@ -38,28 +35,15 @@ function Panel({ p, i }) {
   );
 }
 
-function useNear(ref) {
-  const [near, setNear] = useState(false);
-  useEffect(() => {
-    const io = new IntersectionObserver(([e]) => setNear(e.isIntersecting), { rootMargin: "300px 0px" });
-    if (ref.current) io.observe(ref.current);
-    return () => io.disconnect();
-  }, [ref]);
-  return near;
-}
-
+// Scroll stage; the 3D stadium behind the page flies the camera while this section is pinned.
 export function StadiumSteps() {
   const ref = useRef(null);
   const { scrollYProgress: p } = useScroll({ target: ref, offset: ["start start", "end end"] });
   const bar = useTransform(p, [0, 1], ["0%", "100%"]);
-  const near = useNear(ref);
-  const [gl] = useState(hasWebGL);
-  const sm = typeof window !== "undefined" && window.innerWidth < 640;
   return (
-    <section ref={ref} id="how" className="night mt-24" style={{ height: `${N * 90 + 40}vh` }} data-testid="how-stage">
+    <section ref={ref} id="how" className="relative text-slate-50" style={{ height: `${N * 90 + 40}vh` }} data-testid="how-stage">
       <div className="sticky top-0 h-screen overflow-hidden">
-        <div className="absolute inset-0">{near && gl && <Suspense fallback={null}><StadiumScene p={p} mobile={sm} /></Suspense>}</div>
-        <div className="absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-[#06080D] to-transparent pointer-events-none" />
+        <div className="absolute inset-x-0 top-0 h-56 bg-gradient-to-b from-[#06080D]/90 to-transparent pointer-events-none" />
         <div className="container-x pt-20 sm:pt-24 relative z-10 pointer-events-none">
           <p className="eyebrow">How it works · scroll to walk out</p>
           <h2 className="font-poster font-black uppercase text-4xl sm:text-6xl leading-[0.9] mt-2">Card ready in<br />under a minute</h2>

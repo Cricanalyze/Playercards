@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { inr, API } from "@/lib/api";
 import { useAppData } from "@/context/AppData";
 import { useCheckout } from "@/lib/checkout";
+import { Tilt3D } from "@/components/arena/Scene3D";
 
 function useBilling() {
   const [cfg, setCfg] = useState(null);
@@ -50,8 +51,9 @@ export function PricingGrid({ plans }) {
           const hot = p.id === "pro";
           const price = cycle === "year" ? p.price_year : p.price_month;
           return (
-            <div key={p.id} data-testid={`plan-card-${p.id}`} style={{ transform: `rotate(${[-0.8, 0.6, -0.4, 0.9][plans.indexOf(p) % 4]}deg)` }}
-              className={`ticket lift relative rounded-2xl p-6 pt-12 flex flex-col ${hot ? "night border-2 border-amber-400" : "paper border border-border"}`}>
+            <Tilt3D key={p.id}>
+            <div data-testid={`plan-card-${p.id}`} style={{ transform: `rotate(${[-0.8, 0.6, -0.4, 0.9][plans.indexOf(p) % 4]}deg)` }}
+              className={`ticket relative h-full rounded-2xl p-6 pt-12 flex flex-col shadow-[0_24px_50px_-24px_rgba(0,0,0,.55)] ${hot ? "night border-2 border-amber-400" : "paper border border-border"}`}>
               {hot && <div className="holo absolute inset-x-0 top-0 h-2 opacity-100 [mix-blend-mode:normal]" />}
               <div className="absolute top-4 left-6 right-6 flex justify-between gap-2">
                 {hot ? <span className="text-[10px] font-bold uppercase tracking-widest bg-amber-400 text-slate-950 px-2 py-1 rounded -rotate-2">Most popular</span> : <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Season pass</span>}
@@ -70,6 +72,7 @@ export function PricingGrid({ plans }) {
               <p className="text-[11px] text-muted-foreground mt-5 border-t-2 border-dashed border-border pt-3">{p.terms}</p>
               <Cta p={p} cycle={cycle} cfg={cfg} current={current} />
             </div>
+            </Tilt3D>
           );
         })}
       </div>

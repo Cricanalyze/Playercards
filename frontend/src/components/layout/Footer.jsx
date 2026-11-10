@@ -17,7 +17,7 @@ export default function Footer() {
   const [social, setSocial] = useState({});
   useEffect(() => { axios.get(`${API}/site/social`).then((r) => setSocial(r.data)).catch(() => {}); }, []);
   return (
-    <footer className="border-t border-border mt-24 overflow-hidden">
+    <footer className="border-t border-border mt-24 overflow-hidden relative bg-background">
       <p className="extrude font-poster font-black uppercase text-[21vw] lg:text-[230px] leading-[0.8] text-center select-none pt-10 -mb-4" aria-hidden data-testid="footer-wordmark">FlexoCards</p>
       <div className="container-x py-14 grid gap-10 grid-cols-2 md:grid-cols-[1.4fr_repeat(3,1fr)]">
         <div className="space-y-3 max-w-xs col-span-2 md:col-span-1">

@@ -10,28 +10,43 @@ import { demoFor } from "@/lib/cardUtils";
 
 export { hasWebGL } from "./webgl";
 
-// Renders a real FlexoCards card off-screen and snapshots it for use as a 3D texture.
-export function useCardImage(i) {
+// Renders real FlexoCards cards off-screen and snapshots them for use as 3D textures.
+export function useCardImages(indices) {
   const { sports, templates } = useAppData();
-  const ref = useRef(null);
-  const [url, setUrl] = useState(null);
-  const demo = useMemo(() => (sports.length ? demoFor(i, sports) : null), [sports, i]);
-  const template = demo && templates.find((t) => t.id === demo.templateId);
+  const refs = useRef([]);
+  const [urls, setUrls] = useState({});
+  const key = indices.join(",");
+  const items = useMemo(() => (sports.length && templates.length ? indices.map((i) => {
+    const demo = demoFor(i, sports);
+    return { i, demo, template: templates.find((t) => t.id === demo.templateId) };
+  }).filter((x) => x.template) : []), [sports, templates, key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!demo || !template) return;
+    if (!items.length) return;
     let off = false;
     (async () => {
       await document.fonts.ready;
       await new Promise((r) => setTimeout(r, 400));
-      try { const u = ref.current && (await toPng(ref.current, { pixelRatio: 1.5 })); if (!off && u) setUrl(u); } catch { /* keeps plain card face */ }
+      for (const it of items) {
+        try {
+          const el = refs.current[it.i];
+          if (!el) continue;
+          const u = await toPng(el, { pixelRatio: 1.1 });
+          if (!off && u) setUrls((m) => ({ ...m, [it.i]: u }));
+        } catch { /* keeps placeholder face */ }
+      }
     })();
     return () => { off = true; };
-  }, [demo, template]);
-  const node = demo && template ? createPortal(
+  }, [items]);
+  const node = items.length ? createPortal(
     <div aria-hidden style={{ position: "fixed", left: -10000, top: 0, pointerEvents: "none" }}>
-      <PlayerCard ref={ref} template={template} sport={demo.sport} data={demo.data} photo={demo.photo} />
+      {items.map((it) => <PlayerCard key={it.i} ref={(el) => { refs.current[it.i] = el; }} template={it.template} sport={it.demo.sport} data={it.demo.data} photo={it.demo.photo} />)}
     </div>, document.body) : null;
-  return { url, node, demo };
+  return { cards: items.map((it) => ({ ...it, url: urls[it.i] })), node };
+}
+
+export function useCardImage(i) {
+  const { cards, node } = useCardImages([i]);
+  return { url: cards[0]?.url, demo: cards[0]?.demo, node };
 }
 
 function useTex(url) {
@@ -79,8 +94,7 @@ export function Card3D({ url, demo, spin = 0.35 }) {
       </RoundedBox>
       <mesh position={[0, 0, 0.047]}>
         <planeGeometry args={[2.36, 3.36]} />
-        {front ? <meshPhysicalMaterial map={front} transparent alphaTest={0.05} roughness={0.35} clearcoat={1} clearcoatRoughness={0.12} iridescence={0.7} iridescenceIOR={1.4} />
-          : <meshStandardMaterial color="#111827" metalness={0.4} roughness={0.5} />}
+        <meshPhysicalMaterial key={front ? "tex" : "plain"} map={front || back} roughness={0.35} clearcoat={1} clearcoatRoughness={0.1} />
       </mesh>
       <mesh position={[0, 0, -0.047]} rotation={[0, Math.PI, 0]}>
         <planeGeometry args={[2.36, 3.36]} />

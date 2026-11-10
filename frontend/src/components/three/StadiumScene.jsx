@@ -20,7 +20,7 @@ function grassTexture() {
   return t;
 }
 
-function Ground() {
+export function Ground() {
   const tex = useMemo(grassTexture, []);
   return (
     <group>
@@ -36,7 +36,7 @@ function Ground() {
   );
 }
 
-function Stands({ crowd }) {
+export function Stands({ crowd }) {
   const mesh = useRef();
   const tiers = [0, 1, 2, 3, 4, 5];
   useLayoutEffect(() => {
@@ -71,7 +71,7 @@ function Stands({ crowd }) {
   );
 }
 
-function Floodlights({ count }) {
+export function Floodlights({ count }) {
   return Array.from({ length: count }, (_, i) => {
     const a = Math.PI / 4 + (i * Math.PI * 2) / count;
     const p = [Math.cos(a) * 58, 0, Math.sin(a) * 58];
