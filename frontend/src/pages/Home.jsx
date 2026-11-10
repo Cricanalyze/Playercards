@@ -19,7 +19,7 @@ const HomeWorld = lazy(() => import("@/components/three/HomeWorld"));
 const Section = ({ id, children, ...head }) => (
   <section id={id} className="relative">
     <div className="container-x min-h-[58vh] flex items-end pb-10 pt-24">
-      <div className="rounded-2xl bg-[#06080D]/55 px-5 py-4 -mx-5"><SectionHead {...head} /></div>
+      <div className="rounded-2xl bg-[#06080D]/80 backdrop-blur-sm px-5 py-4 -mx-5"><SectionHead {...head} /></div>
     </div>
     <div className="container-x">
       <div className="rounded-3xl bg-[#090C12]/90 border border-white/10 p-5 sm:p-10 shadow-[0_40px_120px_-40px_rgba(0,0,0,.9)]">{children}</div>

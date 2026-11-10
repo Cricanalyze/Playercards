@@ -16,7 +16,7 @@ const KEYS = [
   ["how", 0.5, v(24, 4, 4), v(0, 1, 0)],
   ["how", 1, v(0, 2.2, -5.8), v(0, 1.95, 0)],
   ["benefits", 0, v(6, 3.2, -8), v(0, 2.2, -17)],
-  ["pricing", 0, v(-3, 9, -20), v(-8, 14, -46)],
+  ["pricing", 0, v(-3, 3, -20), v(-6, 6.5, -46)],
   ["faq", 0, v(-24, 11, 14), v(0, 3, 0)],
   ["cta-section", 0, v(4.5, 1.8, 14.5), v(0, 1, 9.5)],
 ];
@@ -115,7 +115,7 @@ function ledTexture() {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = THREE.RepeatWrapping;
-  t.repeat.set(10, 1);
+  t.repeat.set(-10, 1);
   return t;
 }
 

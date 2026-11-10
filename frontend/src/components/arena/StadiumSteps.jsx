@@ -13,8 +13,8 @@ const N = STEPS.length;
 function Panel({ p, i }) {
   const c = (i + 0.5) / N;
   const d = 1 / N;
-  const opacity = useTransform(p, [c - d * 0.75, c - d * 0.3, c + d * 0.3, c + d * 0.75], [0, 1, 1, i === N - 1 ? 1 : 0]);
-  const y = useTransform(p, [c - d * 0.75, c - d * 0.3], [40, 0]);
+  const opacity = useTransform(p, [c - d * 0.5, c - d * 0.32, c + d * 0.32, c + d * 0.5], [i === 0 ? 1 : 0, 1, 1, i === N - 1 ? 1 : 0]);
+  const y = useTransform(p, [c - d * 0.5, c - d * 0.32], [40, 0]);
   const [Icon, t, desc] = STEPS[i];
   return (
     <motion.div style={{ opacity, y }} className="absolute inset-x-0 bottom-8 sm:bottom-14 pointer-events-none">

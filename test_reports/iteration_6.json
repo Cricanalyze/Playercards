@@ -1,0 +1,35 @@
+{
+  "summary": "Frontend-only test of the 3D home page (HomeWorld) on desktop 1920x1080 and mobile 390x844, plus /explore, /pricing, /blog and /help. Almost everything passed. Hero buttons appear after about 1.5s, before the 3D world mounts (about 2.0s, idle callback). There is exactly 1 canvas, it has pointer-events:none, and no 'drag' text was found. The camera view changes in every section (8 of 8 screenshots differ). The how-step-1..4 panels fade in order (opacity 1,0,0,0 -> 0.11,1,0,0 -> 0,0.11,1,0 -> 0,0,0,1). The sports search finds 1 result for 'kabaddi', shows the empty state for 'zzzz', and the esports filter shows 9. There are 25 featured-template links (href /create?template=...; /create sends signed-out users to sign-up with the right redirect_url). Also verified: 6 benefits, 4 plan cards with 4 CTAs, billing toggle changes Rs18/MONTH to Rs180/YEAR, 15 FAQ items with the accordion opening, contact textarea takes input, cta-create-card-button and hero-explore-designs-button navigate correctly, canvas is still 1 after navigating back. Mobile has no horizontal overflow and the 3D renders. The other public pages load with no console errors and a solid footer (rgb(11,16,24)). No three.js or r3f errors. Found 3 visual issues and 1 noisy console error (see below). Headless FPS was about 2.5 (software rendering, for information only).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "HomeWorld LedBoards", "issue": "The LED advertising ring text is mirrored (reads backwards, e.g. 'ƎTAƎЯƆ', 'SDRAOCXELF'). The CanvasTexture sits on the inside of the cylinder (side=THREE.BackSide), so it is seen from behind. Fix: set tex.repeat.x = -10 (or flip the texture / scale the mesh by -1 on x) so the text reads correctly from inside the stadium. It shows in almost every section.", "selector": "[data-testid=home-3d-world] canvas", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home #pricing (desktop and mobile)", "issues": ["The camera stop puts the 3D FLEXOCARDS scoreboard right behind the section heading, so the 'FREE · BASIC · PRO · TEAM' text overlaps 'UPGRADE WHEN YOU WANT' and the subtitle. The heading panel is only bg-[#06080D]/55, which is too see-through. Move the pricing camera key or the scoreboard so it sits to the side or above, or make the head panel more solid (about /80 with backdrop-blur)."]},
+      {"screen": "Home #how on mobile", "issues": ["While two steps cross-fade, both panels are visible on top of each other (e.g. 'STYLE IT' over a faint 'UPLOAD A PHOTO' and two 'No. 0x/04' badges), which looks muddled. Shorten the overlap or fade the outgoing panel faster."]},
+      {"screen": "Home section heads", "issues": ["Section heading panels at /55 opacity can be hard to read over the bright crowd, LED ring and scoreboard areas."]}
+    ]
+  },
+  "critical_code_review_comments": [
+    "Card3D.useCardImages calls html-to-image toJpeg, which logs console errors on every home load ('Error inlining remote css file SecurityError: cssRules', fonts.googleapis.com). It still works, but it is noise. Pass skipFonts:true, or pass a pre-fetched fontEmbedCSS, or add crossorigin='anonymous' to the Google Fonts link.",
+    "Home.jsx reads `mobile` once from window.innerWidth with no resize handling. That is acceptable, but rotating or resizing will not switch quality tiers.",
+    "Rig adds the scroll fraction from KEYS (f) only when f is truthy, so the ['how', 0] key uses top - 0.35*vh while the f=0.5/1 keys use the raw top. That is intended but undocumented.",
+    "WebGL readPixels 'GPU stall' driver warnings appear in headless mode (probably PerformanceMonitor or html-to-image). They are harmless."
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "Fix the mirrored LED board texture in HomeWorld.jsx (LedBoards: flip the texture repeat.x to negative).",
+    "Improve readability of the #pricing section heading over the 3D scoreboard (camera key or a more solid panel).",
+    "Reduce the cross-fade overlap of the how-step panels on mobile.",
+    "Optional: silence the html-to-image cssRules console errors (skipFonts:true)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "95%"},
+  "seed_data_creation": "None. The contact form was filled but not submitted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "html has smooth scroll-behavior, so use scrollTo({behavior:'instant'}) before screenshots, otherwise the screenshots show stale sections at the low headless FPS. CDP synthesizeScrollGesture (touch) returned delta 0 in a non-touch context, so this is inconclusive. Mouse wheel over the canvas scrolls fine, and pointer-events:none is confirmed. /create needs sign-in.",
+  "rca of the issue": "LED mirrored text: the open cylinder uses side=BackSide and is viewed from the inside, so the UVs are reversed horizontally."
+}
